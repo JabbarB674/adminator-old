@@ -16,13 +16,6 @@ plugins:
   - serverless-offline
 
 functions:
-  hello:
-    handler: testhandler/testhandler.hello
-    events:
-      - http:
-          path: /
-          method: get
-
   loginTasty:
     handler: lambda-functions/loginTasty/index.handler
     events:

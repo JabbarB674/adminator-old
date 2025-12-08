@@ -42,8 +42,9 @@ export default function Login() {
     <div className="auth-container">
       <div className="auth-card">
         <div className="auth-header">
+          <h1 className="tech-logo">ADMINATOR</h1>
           <h2>Welcome Back</h2>
-          <p>Sign in to Adminator</p>
+          <p style={{ color: '#888' }}>Sign in to Adminator</p>
         </div>
         
         {error && <div className="auth-error">{error}</div>}
