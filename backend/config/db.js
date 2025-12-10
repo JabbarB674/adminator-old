@@ -13,7 +13,8 @@ const dbConfig = {
     options: {
         database: process.env.DB_NAME,
         encrypt: true,
-        trustServerCertificate: true
+        trustServerCertificate: true,
+        rowCollectionOnRequestCompletion: true
     }
 };
 
