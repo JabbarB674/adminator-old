@@ -23,12 +23,16 @@ function executeQuery(query, params = []) {
 
         connection.on('connect', err => {
             if (err) return reject(err);
+            console.log('Database connection established');
 
             const request = new Request(query, (err, rowCount, rows) => {
                 connection.close();
                 if (err) return reject(err);
                 resolve(rows);
             });
+
+            console.log('Executing query:', query);
+            console.log('Query parameters:', params);
 
             params.forEach(p => {
                 request.addParameter(p.name, p.type, p.value);

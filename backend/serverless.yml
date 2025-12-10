@@ -17,6 +17,13 @@ functions:
           path: loginTest
           method: any
           cors: true
+  getUsers:
+    handler: apps/tasty-customers/getUsers.handler
+    events:
+      - http:
+          path: getUsers
+          method: get
+          cors: true
 
 custom:
   serverless-offline:

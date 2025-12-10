@@ -11,10 +11,14 @@ exports.login = async (req, res) => {
     }
 
     try {
-        const query = 'SELECT UserId, Email, PasswordHash, Role, FirstName, LastName FROM Adminator_Users WHERE Email = @Email AND IsActive = 1';
+        console.log('Login request body:', req.body);
+
+        const query = 'SELECT * FROM Adminator_Users;';
         const params = [{ name: 'Email', type: TYPES.NVarChar, value: email }];
 
-        const rows = await executeQuery(query, params);
+        const rows = await executeQuery(query);
+
+        console.log('Query result:', rows);
 
         if (rows.length === 0) {
             return res.status(401).json({ error: 'Invalid credentials' });
@@ -31,13 +35,15 @@ exports.login = async (req, res) => {
 
         const isValid = await bcrypt.compare(password, user.passwordHash);
 
+        console.log('Password validation result:', isValid);
+
         if (!isValid) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
         const token = jwt.sign(
             { userId: user.userId, email: user.email, role: user.role },
-            process.env.JWT_SECRET || 'default_secret',
+            process.env.JWT_SECRET,
             { expiresIn: '24h' }
         );
 

@@ -14,7 +14,7 @@ const verifyToken = (req, res, next) => {
         return res.status(403).json({ error: 'Malformed token' });
     }
 
-    jwt.verify(tokenString, process.env.JWT_SECRET || 'default_secret', (err, decoded) => {
+    jwt.verify(tokenString, process.env.JWT_SECRET, (err, decoded) => {
         if (err) {
             return res.status(401).json({ error: 'Unauthorized' });
         }
