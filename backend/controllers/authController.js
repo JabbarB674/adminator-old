@@ -13,10 +13,10 @@ exports.login = async (req, res) => {
     try {
         console.log('Login request body:', req.body);
 
-        const query = 'SELECT * FROM Adminator_Users;';
+        const query = 'SELECT * FROM Adminator_Users WHERE Email = @Email;';
         const params = [{ name: 'Email', type: TYPES.NVarChar, value: email }];
 
-        const rows = await executeQuery(query);
+        const rows = await executeQuery(query, params);
 
         console.log('Query result:', rows);
 
