@@ -1,0 +1,11 @@
+:root {
+  --primary-color: #1e1e1e;
+  --secondary-color: #333;
+  --accent-color: #ff0000; /* Red from the logo gradient */
+  --text-color: #ffffff;
+  --text-muted: #cccccc;
+  --bg-color: #f4f4f4;
+  --header-height: 60px;
+  --sidebar-bg: #151515;
+  --sidebar-width: 250px;
+}

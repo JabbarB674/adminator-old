@@ -13,7 +13,7 @@ exports.login = async (req, res) => {
     try {
         console.log('Login request body:', req.body);
 
-        const query = 'SELECT * FROM Adminator_Users WHERE Email = @Email;';
+        const query = 'SELECT UserId, Email, PasswordHash, Role, FirstName, LastName FROM Adminator_Users WHERE Email = @Email;';
         const params = [{ name: 'Email', type: TYPES.NVarChar, value: email }];
 
         const rows = await executeQuery(query, params);
@@ -24,13 +24,20 @@ exports.login = async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
+        // Helper to safely get value by column name
+        const getValue = (row, colName) => {
+            const col = row.find(c => c.metadata.colName === colName);
+            return col ? col.value : null;
+        };
+
+        const row = rows[0];
         const user = {
-            userId: rows[0][0].value,
-            email: rows[0][1].value,
-            passwordHash: rows[0][2].value,
-            role: rows[0][3].value,
-            firstName: rows[0][4].value,
-            lastName: rows[0][5].value
+            userId: getValue(row, 'UserId'),
+            email: getValue(row, 'Email'),
+            passwordHash: getValue(row, 'PasswordHash'),
+            role: getValue(row, 'Role'),
+            firstName: getValue(row, 'FirstName'),
+            lastName: getValue(row, 'LastName')
         };
 
         const isValid = await bcrypt.compare(password, user.passwordHash);

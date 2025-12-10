@@ -58,9 +58,12 @@ function authenticate(event, jwtSecret) {
   try {
     const decoded = jwt.verify(token, jwtSecret);
     
-    // Check for admin role in either 'role' (string) or 'roles' (array)
-    const hasAdminRole = (decoded.role && decoded.role.toLowerCase() === 'admin') || 
-                         (decoded.roles && decoded.roles.includes('admin'));
+    // Check for admin or superadmin role in either 'role' (string) or 'roles' (array)
+    const role = decoded.role ? decoded.role.toLowerCase() : '';
+    const roles = decoded.roles ? decoded.roles.map(r => r.toLowerCase()) : [];
+    
+    const hasAdminRole = role === 'admin' || role === 'superadmin' || 
+                         roles.includes('admin') || roles.includes('superadmin');
 
     if (!hasAdminRole) {
       throw new Error('Unauthorized: Insufficient permissions');

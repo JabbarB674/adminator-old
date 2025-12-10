@@ -3,17 +3,10 @@ import { useAuth } from '../context/AuthContext';
 import "../styles/auth.css"; // Import styles for tech-logo
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   return (
     <div>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', borderBottom: '1px solid #ccc' }}>
-        <h2>Dashboard</h2>
-        <div>
-          <span>Welcome, {user?.email}!</span>
-          <button onClick={logout} style={{ marginLeft: '1rem', padding: '0.5rem 1rem', cursor: 'pointer' }}>Logout</button>
-        </div>
-      </header>
       <main style={{ padding: '2rem' }}>
         <section>
           <h3>Your Apps</h3>
