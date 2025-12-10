@@ -1,25 +1,23 @@
-service: adminator-backend
-
-frameworkVersion: '3'
+service: tasty-customers
 
 provider:
   name: aws
   runtime: nodejs18.x
   region: ap-southeast-2
-  environment:
-    tableName: ${self:custom.tableName}
-
-custom:
-  tableName: 'users-table-${sls:stage}'
+  timeout: 30
 
 plugins:
   - serverless-offline
 
 functions:
-  loginTasty:
-    handler: lambda-functions/loginTasty/index.handler
+  loginTest:
+    handler: apps/tasty-customers/loginTest.handler
     events:
       - http:
-          path: loginTasty
-          method: post
+          path: loginTest
+          method: any
           cors: true
+
+custom:
+  serverless-offline:
+    httpPort: 5001

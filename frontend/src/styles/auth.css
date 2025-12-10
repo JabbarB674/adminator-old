@@ -53,14 +53,14 @@
 
 .form-input:focus {
   outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+  border-color: #ff0000;
+  box-shadow: 0 0 0 2px rgba(255, 0, 0, 0.25);
 }
 
 .auth-button {
   width: 100%;
   padding: 1rem;
-  background-color: #007bff;
+  background-color: #ff0000;
   color: white;
   border: none;
   border-radius: 6px;
@@ -72,7 +72,7 @@
 }
 
 .auth-button:hover {
-  background-color: #0056b3;
+  background-color: #cc0000;
 }
 
 .auth-button:disabled {
