@@ -9,6 +9,7 @@ const secretsClient = new SecretsManagerClient({ region });
 
 const secretIds = {
   db: 'rds/sqlserver/datamesh',
+  jwtCurrent: 'jwt/secret/current',
 };
 
 async function getSecretValue(secretId) {
@@ -18,24 +19,50 @@ async function getSecretValue(secretId) {
 }
 
 async function getConfig() {
-  const db = await getSecretValue(secretIds.db);
+  // 1. Check for local override first
+  if (process.env.IS_OFFLINE && process.env.JWT_SECRET) {
+    console.log('⚠️ Using local JWT_SECRET from environment');
+    // We still need DB config. Assuming we can fetch it from AWS even locally,
+    // or you could mock this too if you have a local DB.
+    const db = await getSecretValue(secretIds.db);
+    return {
+      db,
+      jwtSecret: process.env.JWT_SECRET
+    };
+  }
+
+  // 2. Production path: Fetch everything from AWS
+  const [db, jwtSecretData] = await Promise.all([
+    getSecretValue(secretIds.db),
+    getSecretValue(secretIds.jwtCurrent)
+  ]);
+  
   return {
     db,
+    jwtSecret: jwtSecretData.JWT_SECRET
   };
 }
 
-const JWT_SECRET = process.env.JWT_SECRET;
-
-function authenticate(event) {
+function authenticate(event, jwtSecret) {
   const authHeader = event.headers.Authorization || event.headers.authorization;
   if (!authHeader) {
     throw new Error('Unauthorized: Missing Authorization header');
   }
 
   const token = authHeader.split(' ')[1]; // Expecting format: Bearer <token>
+  
+  if (!jwtSecret) {
+     throw new Error('Server Error: JWT Secret not configured');
+  }
+
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    if (!decoded.roles || !decoded.roles.includes('admin')) {
+    const decoded = jwt.verify(token, jwtSecret);
+    
+    // Check for admin role in either 'role' (string) or 'roles' (array)
+    const hasAdminRole = (decoded.role && decoded.role.toLowerCase() === 'admin') || 
+                         (decoded.roles && decoded.roles.includes('admin'));
+
+    if (!hasAdminRole) {
       throw new Error('Unauthorized: Insufficient permissions');
     }
     return decoded;
@@ -45,18 +72,27 @@ function authenticate(event) {
 }
 
 exports.handler = async (event) => {
+  let config;
   try {
-    // Authenticate the user
-    const user = authenticate(event);
+    // Fetch config first to get the secret
+    config = await getConfig();
+    
+    // Authenticate the user using the fetched secret
+    const user = authenticate(event, config.jwtSecret);
     console.log('Authenticated user:', user);
   } catch (err) {
+    console.error('Authentication error:', err);
     return {
       statusCode: 401,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({ error: err.message }),
     };
   }
 
-  const { db } = await getConfig();
+  const { db } = config;
 
   return new Promise((resolve, reject) => {
     const config = {
@@ -80,16 +116,26 @@ exports.handler = async (event) => {
 
     connection.on('connect', (err) => {
       if (err) {
-        return reject({ statusCode: 500, body: JSON.stringify({ error: 'Database connection failed', details: err.message }) });
+        console.error('Database connection failed:', err);
+        return resolve({ 
+          statusCode: 500, 
+          headers: { 'Access-Control-Allow-Origin': '*' },
+          body: JSON.stringify({ error: 'Database connection failed', details: err.message }) 
+        });
       }
 
       const request = new Request('SELECT * FROM dbo.AuthUsers', (err, rowCount, rows) => {
         connection.close();
         if (err) {
-          return reject({ statusCode: 500, body: JSON.stringify({ error: 'Query failed', details: err.message }) });
+          console.error('Query failed:', err);
+          return resolve({ 
+            statusCode: 500, 
+            headers: { 'Access-Control-Allow-Origin': '*' },
+            body: JSON.stringify({ error: 'Query failed', details: err.message }) 
+          });
         }
 
-        console.log('Raw rows:', rows);
+        console.log(`Fetched ${rowCount} rows`);
 
         const users = rows.map(row => {
           const user = {};
@@ -99,16 +145,26 @@ exports.handler = async (event) => {
           return user;
         });
 
-        console.log('Parsed users:', users);
-
-        resolve({ statusCode: 200, body: JSON.stringify(users) });
+        resolve({ 
+          statusCode: 200, 
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(users) 
+        });
       });
 
       connection.execSql(request);
     });
 
     connection.on('error', (err) => {
-      reject({ statusCode: 500, body: JSON.stringify({ error: 'Connection error', details: err.message }) });
+      console.error('Connection error:', err);
+      resolve({ 
+        statusCode: 500, 
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ error: 'Connection error', details: err.message }) 
+      });
     });
 
     connection.connect();

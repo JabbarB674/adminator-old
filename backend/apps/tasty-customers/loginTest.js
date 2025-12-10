@@ -19,6 +19,21 @@ async function getSecretValue(secretId) {
 }
 
 async function getConfig() {
+  // If running locally and env var is set, use it to mock the secrets
+  if (process.env.IS_OFFLINE && process.env.JWT_SECRET) {
+    console.log('⚠️ Using local JWT_SECRET from environment');
+    // We still need DB config, assuming it's either in env or we still fetch it. 
+    // For now, let's fetch DB but mock JWT to keep local dev easy if you have DB access.
+    const db = await getSecretValue(secretIds.db);
+    return {
+      db,
+      jwtSecrets: {
+        current: process.env.JWT_SECRET,
+        previous: process.env.JWT_SECRET
+      }
+    };
+  }
+
   const [db, jwtCurrent, jwtPrevious] = await Promise.all([
     getSecretValue(secretIds.db),
     getSecretValue(secretIds.jwtCurrent),

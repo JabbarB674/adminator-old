@@ -47,6 +47,8 @@ exports.login = async (req, res) => {
             { expiresIn: '24h' }
         );
 
+        console.log('Generated JWT token:', token);
+
         res.json({
             token,
             user: {
