@@ -1,7 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 export default function NuclearCommands() {
   const [showVideo, setShowVideo] = useState(false);
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    if (showVideo && videoRef.current) {
+      videoRef.current.play().catch(error => {
+        console.log("Autoplay prevented:", error);
+      });
+    }
+  }, [showVideo]);
 
   const handleDoomsday = () => {
     setShowVideo(true);
@@ -38,7 +47,7 @@ export default function NuclearCommands() {
           onMouseDown={(e) => e.target.style.transform = 'scale(0.95)'}
           onMouseUp={(e) => e.target.style.transform = 'scale(1)'}
           onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
-          
+
         >
           DO NOT PRESS UNLESS COMPLETE FAILURE IS IMMINENT
         </button>
@@ -51,6 +60,7 @@ export default function NuclearCommands() {
           boxShadow: '0 0 30px rgba(255, 0, 0, 0.3)'
         }}>
           <video 
+            ref={videoRef}
             width="640" 
             height="360" 
             controls 
