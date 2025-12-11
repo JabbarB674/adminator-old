@@ -1,0 +1,28 @@
+{
+  "title": "Tasty Customers",
+  "description": "Manage catering orders, customer profiles, and menus.",
+  "sections": [
+    {
+      "title": "Quick Actions",
+      "widgets": [
+        {
+          "type": "link-list",
+          "links": [
+            { "label": "New Order", "url": "#", "description": "Create a catering order" },
+            { "label": "Customer Database", "url": "#", "description": "Search and edit customers" },
+            { "label": "Menu Editor", "url": "#", "description": "Update pricing and items" }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Reports",
+      "widgets": [
+        {
+          "type": "markdown",
+          "content": "### Monthly Overview\n\n- **Total Orders**: 145\n- **Revenue**: $12,450\n- **Top Item**: Spicy Chicken Wrap"
+        }
+      ]
+    }
+  ]
+}

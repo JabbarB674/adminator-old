@@ -1,0 +1,28 @@
+{
+    "title": "Tasty Customers",
+    "description": "Manage catering orders, customer profiles, and menus.",
+    "sections": [
+        {
+            "title": "Quick Actions",
+            "widgets": [
+                {
+                    "type": "link-list",
+                    "links": [
+                        { "label": "New Order", "url": "/orders/new", "external": false },
+                        { "label": "Customer Directory", "url": "/customers", "external": false },
+                        { "label": "Menu Management", "url": "/menu", "external": false }
+                    ]
+                }
+            ]
+        },
+        {
+            "title": "Overview",
+            "widgets": [
+                {
+                    "type": "markdown",
+                    "content": "Welcome to the **Tasty Customers** management portal. Use the links above to manage your catering business.\n\n*   **Orders**: View and process incoming catering requests.\n*   **Customers**: Manage client details and history.\n*   **Menu**: Update items and pricing."
+                }
+            ]
+        }
+    ]
+}

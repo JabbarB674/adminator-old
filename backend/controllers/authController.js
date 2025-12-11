@@ -43,7 +43,11 @@ exports.login = async (req, res) => {
         const allowedApps = appRows.map(row => ({
             appId: row.AppId,
             appKey: row.AppKey,
-            appName: row.AppName
+            appName: row.AppName,
+            description: row.Description,
+            appIcon: row.AppIcon,
+            routePath: row.RoutePath,
+            configPath: row.ConfigPath
         }));
 
         const isValid = await bcrypt.compare(password, user.passwordHash);

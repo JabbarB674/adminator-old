@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import '../../styles/Sidebar.css';
 
 export default function Sidebar() {
+  const { user } = useAuth();
   const [expandedGroups, setExpandedGroups] = useState({
     settings: false,
     tools: false,
-    apps: false
+    apps: true // Default open for apps
   });
   const location = useLocation();
 
@@ -89,12 +91,21 @@ export default function Sidebar() {
           </div>
           {expandedGroups.apps && (
             <div className="nav-group-items">
-              <NavLink to="/apps/app1" className={({ isActive }) => `nav-item nav-subitem ${isActive ? 'active' : ''}`}>
-                App 1
-              </NavLink>
-              <NavLink to="/apps/app2" className={({ isActive }) => `nav-item nav-subitem ${isActive ? 'active' : ''}`}>
-                App 2
-              </NavLink>
+              {user?.allowedApps?.length > 0 ? (
+                user.allowedApps.map(app => (
+                  <NavLink 
+                    key={app.appKey}
+                    to={app.routePath || `/apps/${app.appKey}`} 
+                    className={({ isActive }) => `nav-item nav-subitem ${isActive ? 'active' : ''}`}
+                  >
+                    {app.appName}
+                  </NavLink>
+                ))
+              ) : (
+                <div style={{ padding: '0.5rem 1rem', color: '#666', fontSize: '0.8rem' }}>
+                  No apps available
+                </div>
+              )}
             </div>
           )}
         </div>
