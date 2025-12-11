@@ -1,27 +1,35 @@
 const jwt = require('jsonwebtoken');
 
-const verifyToken = (req, res, next) => {
-    const token = req.headers['authorization'];
+const protect = (req, res, next) => {
+    let token;
 
-    if (!token) {
-        return res.status(403).json({ error: 'No token provided' });
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+        token = req.headers.authorization.split(' ')[1];
+    } else if (req.query.token) {
+        token = req.query.token;
     }
 
-    // Bearer <token>
-    const tokenString = token.split(' ')[1];
-
-    if (!tokenString) {
-        return res.status(403).json({ error: 'Malformed token' });
-    }
-
-    jwt.verify(tokenString, process.env.JWT_SECRET, (err, decoded) => {
-        if (err) {
-            return res.status(401).json({ error: 'Unauthorized' });
+    if (token) {
+        try {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            
+            req.user = decoded; // Attach full decoded token to request
+            next();
+        } catch (error) {
+            console.error(error);
+            res.status(401).json({ error: 'Not authorized, token failed' });
         }
-        req.userId = decoded.userId;
-        req.userRole = decoded.role;
-        next();
-    });
+    } else {
+        res.status(401).json({ error: 'Not authorized, no token' });
+    }
 };
 
-module.exports = verifyToken;
+const admin = (req, res, next) => {
+    if (req.user && req.user.isGlobalAdmin) {
+        next();
+    } else {
+        res.status(401).json({ error: 'Not authorized as an admin' });
+    }
+};
+
+module.exports = { protect, admin };

@@ -12,6 +12,7 @@ import AppConfiguration from "./pages/settings/AppConfiguration";
 import NuclearCommands from "./pages/settings/NuclearCommands";
 import CurlTool from "./pages/tools/CurlTool";
 import DbLookup from "./pages/tools/DbLookup";
+import BucketExplorer from "./pages/tools/BucketExplorer";
 
 const ProtectedLayout = () => {
   return (
@@ -38,6 +39,7 @@ function App() {
             <Route path="/settings/nuclear-commands" element={<NuclearCommands />} />
             <Route path="/tools/curl" element={<CurlTool />} />
             <Route path="/tools/db-lookup" element={<DbLookup />} />
+            <Route path="/tools/bucket-explorer" element={<BucketExplorer />} />
           </Route>
 
           <Route path="/" element={<Navigate to="/dashboard" />} />

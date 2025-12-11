@@ -71,6 +71,9 @@ export default function Sidebar() {
               <NavLink to="/tools/db-lookup" className={({ isActive }) => `nav-item nav-subitem ${isActive ? 'active' : ''}`}>
                 DB Lookup
               </NavLink>
+              <NavLink to="/tools/bucket-explorer" className={({ isActive }) => `nav-item nav-subitem ${isActive ? 'active' : ''}`}>
+                Bucket Explorer
+              </NavLink>
             </div>
           )}
         </div>
