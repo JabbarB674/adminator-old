@@ -32,6 +32,17 @@ export const AuthProvider = ({ children }) => {
     setAccount(newAccount);
   };
 
+  const refreshUser = async () => {
+      const data = await authService.refreshProfile();
+      if (data) {
+          setUser(data.user);
+          // Also update token if it changed
+          if (data.token) {
+              authService.saveAuth(data);
+          }
+      }
+  };
+
   const logout = () => {
     authService.logout();
     setUser(null);
@@ -45,6 +56,7 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     updateAccount,
+    refreshUser,
     isAuthenticated: !!user,
   };
 

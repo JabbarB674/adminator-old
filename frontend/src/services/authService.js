@@ -74,5 +74,26 @@ export const authService = {
     } catch {
       return null;
     }
+  },
+
+  async refreshProfile() {
+    const token = this.getToken();
+    if (!token) return null;
+
+    try {
+        const { apiUrl } = require('../utils/api');
+        const res = await fetch(apiUrl('/refresh-profile'), {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (res.ok) {
+            const data = await res.json();
+            this.saveAuth(data);
+            return data;
+        }
+    } catch (err) {
+        console.error('Failed to refresh profile:', err);
+    }
+    return null;
   }
 };

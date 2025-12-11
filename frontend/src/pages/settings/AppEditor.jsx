@@ -3,9 +3,11 @@ import LayoutEditor from './editors/LayoutEditor';
 import DataSourceEditor from './editors/DataSourceEditor';
 import ActionEditor from './editors/ActionEditor';
 import { apiUrl } from '../../utils/api';
+import { useAuth } from '../../context/AuthContext';
 import '../../styles/AppEditor.css';
 
 export default function AppEditor() {
+  const { refreshUser } = useAuth();
   const fileInputRef = useRef(null);
   const iconInputRef = useRef(null);
   const [activeTab, setActiveTab] = useState('general');
@@ -116,6 +118,7 @@ export default function AppEditor() {
             setDeleteConfirmation('');
             resetEditor();
             fetchExistingApps();
+            refreshUser(); // Refresh sidebar
         } else {
             alert('Failed to delete app');
         }
@@ -151,6 +154,7 @@ export default function AppEditor() {
       if (res.ok) {
         alert(`Saved successfully to: ${data.path}`);
         fetchExistingApps(); // Refresh list
+        refreshUser(); // Refresh sidebar
         setIsEditing(true); // Switch to edit mode
         if (!isEditing) {
             // If it was a new app, set the loaded key so subsequent saves are updates

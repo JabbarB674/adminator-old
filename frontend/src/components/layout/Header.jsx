@@ -4,10 +4,11 @@ import { useLocation, Link, useNavigate } from 'react-router-dom';
 import '../../styles/Header.css';
 
 export default function Header() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const dropdownRef = useRef(null);
 
   // Close dropdown when clicking outside
@@ -22,6 +23,12 @@ export default function Header() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [dropdownRef]);
+
+  const handleRefresh = async () => {
+      setIsRefreshing(true);
+      await refreshUser();
+      setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   const getPathDisplay = () => {
     const path = location.pathname;
@@ -63,6 +70,22 @@ export default function Header() {
       
       {user && (
         <div className="header-right" ref={dropdownRef}>
+            <button 
+                onClick={handleRefresh} 
+                title="Refresh Profile & Apps"
+                disabled={isRefreshing}
+                style={{ 
+                    marginRight: '1rem', 
+                    background: 'transparent', 
+                    border: 'none', 
+                    color: '#aaa', 
+                    cursor: 'pointer', 
+                    fontSize: '1.2rem',
+                    transition: 'transform 0.5s ease'
+                }}
+            >
+                <span style={{ display: 'inline-block', transform: isRefreshing ? 'rotate(360deg)' : 'none', transition: 'transform 0.5s ease' }}>↻</span>
+            </button>
             <div className="user-box" onClick={() => setDropdownOpen(!dropdownOpen)}>
                 {user.email || user.username || 'User'}
             </div>
