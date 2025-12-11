@@ -7,6 +7,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
 import UserControl from "./pages/UserControl";
+import UserPermissions from "./pages/UserPermissions";
 import MyDetails from "./pages/settings/MyDetails";
 import AppConfiguration from "./pages/settings/AppConfiguration";
 import NuclearCommands from "./pages/settings/NuclearCommands";
@@ -35,6 +36,7 @@ function App() {
           <Route element={<ProtectedLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/user-control" element={<UserControl />} />
+            <Route path="/user-permissions" element={<UserPermissions />} />
             <Route path="/settings/my-details" element={<MyDetails />} />
             <Route path="/settings/app-configuration" element={<AppConfiguration />} />
             <Route path="/settings/nuclear-commands" element={<NuclearCommands />} />

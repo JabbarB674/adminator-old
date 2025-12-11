@@ -1,4 +1,4 @@
-const { executeQuery } = require('../config/db');
+ const { executeQuery } = require('../config/db');
 
 exports.executeQuery = async (req, res) => {
     const { query } = req.body;
@@ -18,6 +18,16 @@ exports.executeQuery = async (req, res) => {
             rowsAffected: [recordset.length], // Approximation since our db wrapper doesn't return affected count
             recordset: recordset
         });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+exports.getApps = async (req, res) => {
+    try {
+        const result = await executeQuery('SELECT * FROM Adminator_Apps');
+        const apps = result.length > 0 ? result[0] : [];
+        res.json(apps);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

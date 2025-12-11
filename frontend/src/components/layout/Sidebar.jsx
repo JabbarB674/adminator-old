@@ -8,6 +8,7 @@ export default function Sidebar() {
   const [expandedGroups, setExpandedGroups] = useState({
     settings: false,
     tools: false,
+    users: false,
     apps: true // Default open for apps
   });
   const location = useLocation();
@@ -52,9 +53,27 @@ export default function Sidebar() {
           )}
         </div>
         
-        <NavLink to="/user-control" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-          User Control
-        </NavLink>
+        {user?.isGlobalAdmin && (
+          <div className="nav-group">
+            <div 
+              className={`nav-item nav-group-header`}
+              onClick={() => toggleGroup('users')}
+            >
+              <span>User Control</span>
+              <span className={`arrow-icon ${expandedGroups.users ? 'open' : ''}`}>▶</span>
+            </div>
+            {expandedGroups.users && (
+              <div className="nav-group-items">
+                <NavLink to="/user-control" className={({ isActive }) => `nav-item nav-subitem ${isActive ? 'active' : ''}`}>
+                  User Management
+                </NavLink>
+                <NavLink to="/user-permissions" className={({ isActive }) => `nav-item nav-subitem ${isActive ? 'active' : ''}`}>
+                  User Permissions
+                </NavLink>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Tools Dropdown */}
         <div className="nav-group">

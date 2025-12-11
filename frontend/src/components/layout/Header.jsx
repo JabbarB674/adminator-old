@@ -68,6 +68,16 @@ export default function Header() {
             </div>
             {dropdownOpen && (
                 <div className="user-dropdown">
+                    {user.isGlobalAdmin && (
+                        <>
+                            <Link to="/user-control" className="dropdown-item" style={{textDecoration: 'none', color: 'inherit', display: 'block'}} onClick={() => setDropdownOpen(false)}>
+                                User Management
+                            </Link>
+                            <Link to="/user-permissions" className="dropdown-item" style={{textDecoration: 'none', color: 'inherit', display: 'block'}} onClick={() => setDropdownOpen(false)}>
+                                User Permissions
+                            </Link>
+                        </>
+                    )}
                     <div className="dropdown-item" onClick={handleLogout}>Logout</div>
                 </div>
             )}
