@@ -7,6 +7,7 @@ import '../../styles/AppEditor.css';
 
 export default function AppEditor() {
   const fileInputRef = useRef(null);
+  const iconInputRef = useRef(null);
   const [activeTab, setActiveTab] = useState('general');
   const [saving, setSaving] = useState(false);
   const [existingApps, setExistingApps] = useState([]);
@@ -192,6 +193,44 @@ export default function AppEditor() {
     }
   };
 
+  const handleIconUpload = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      if (!config.meta.appKey) {
+          alert('Please enter an App Key first.');
+          return;
+      }
+
+      const formData = new FormData();
+      formData.append('icon', file);
+
+      try {
+          const token = localStorage.getItem('jwt');
+          const res = await fetch(apiUrl(`/apps/configs/${config.meta.appKey}/icon`), {
+              method: 'POST',
+              headers: {
+                  'Authorization': `Bearer ${token}`
+              },
+              body: formData
+          });
+          
+          if (res.ok) {
+              const data = await res.json();
+              alert('Icon uploaded successfully!');
+              setConfig(prev => ({
+                  ...prev,
+                  meta: { ...prev.meta, icon: data.path }
+              }));
+          } else {
+              alert('Failed to upload icon');
+          }
+      } catch (err) {
+          console.error(err);
+          alert('Error uploading icon');
+      }
+  };
+
   const handleMetaChange = (e) => {
     const { name, value } = e.target;
     setConfig(prev => ({
@@ -350,14 +389,32 @@ export default function AppEditor() {
                 />
               </div>
               <div className="form-group">
-                <label>Icon (Emoji or URL)</label>
-                <input 
-                  type="text" 
-                  name="icon" 
-                  value={config.meta.icon} 
-                  onChange={handleMetaChange} 
-                  placeholder="🍔" 
-                />
+                <label>Icon (Emoji, URL, or Upload)</label>
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                    <input 
+                      type="text" 
+                      name="icon" 
+                      value={config.meta.icon} 
+                      onChange={handleMetaChange} 
+                      placeholder="🍔 or path/to/icon.png" 
+                      style={{ flex: 1 }}
+                    />
+                    <input 
+                        type="file" 
+                        ref={iconInputRef} 
+                        style={{ display: 'none' }} 
+                        accept="image/*" 
+                        onChange={handleIconUpload} 
+                    />
+                    <button 
+                        className="btn-secondary" 
+                        onClick={() => iconInputRef.current.click()}
+                        disabled={!config.meta.appKey}
+                        title={!config.meta.appKey ? "Enter App Key first" : "Upload Icon"}
+                    >
+                        Upload
+                    </button>
+                </div>
               </div>
             </div>
           )}
