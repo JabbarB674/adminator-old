@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../../utils/api';
 import FileUploader from '../../components/shared/FileUploader';
+import { useAuth } from '../../context/AuthContext';
 
 export default function BucketExplorer() {
+  const { user } = useAuth();
   const [currentPath, setCurrentPath] = useState('');
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -30,8 +32,29 @@ export default function BucketExplorer() {
   };
 
   useEffect(() => {
-    fetchItems();
-  }, []);
+    if (user && user.isGlobalAdmin) {
+      fetchItems();
+    }
+  }, [user]);
+
+  if (!user || !user.isGlobalAdmin) {
+    return (
+      <div style={{ 
+        maxWidth: '800px', 
+        margin: '2rem auto', 
+        padding: '2rem',
+        background: '#2a1515',
+        border: '1px solid #ff4d4d',
+        borderRadius: '8px',
+        color: '#ff4d4d',
+        textAlign: 'center'
+      }}>
+        <h2 style={{ marginBottom: '1rem' }}>Access Denied</h2>
+        <p>You do not have enough permissions for this feature.</p>
+        <p style={{ fontSize: '0.9rem', opacity: 0.8, marginTop: '0.5rem' }}>Required: Global Admin privileges</p>
+      </div>
+    );
+  }
 
   const handleNavigate = (folderName) => {
     const newPath = currentPath ? `${currentPath}/${folderName}` : folderName;
