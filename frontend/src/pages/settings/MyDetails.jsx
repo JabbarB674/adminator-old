@@ -34,7 +34,7 @@ export default function MyDetails() {
           </div>
 
           <div className="detail-group">
-            <label style={{ display: 'block', color: '#888', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Role</label>
+            <label style={{ display: 'block', color: '#888', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Profile</label>
             <div style={{ 
               display: 'inline-block',
               padding: '0.25rem 0.75rem',
@@ -45,7 +45,7 @@ export default function MyDetails() {
               fontWeight: 'bold',
               border: '1px solid rgba(255, 0, 0, 0.2)'
             }}>
-              {user.role || 'User'}
+              {user.profileName || 'User'}
             </div>
           </div>
 

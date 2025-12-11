@@ -58,15 +58,15 @@ function authenticate(event, jwtSecret) {
   try {
     const decoded = jwt.verify(token, jwtSecret);
     
-    // Check for admin or superadmin role in either 'role' (string) or 'roles' (array)
-    const role = decoded.role ? decoded.role.toLowerCase() : '';
-    const roles = decoded.roles ? decoded.roles.map(r => r.toLowerCase()) : [];
+    // Check for Global Admin OR specific App Access
+    const isGlobalAdmin = decoded.isGlobalAdmin === true || decoded.isGlobalAdmin === 1;
+    const allowedApps = decoded.allowedApps || [];
     
-    const hasAdminRole = role === 'admin' || role === 'superadmin' || 
-                         roles.includes('admin') || roles.includes('superadmin');
+    // This Lambda belongs to the 'tasty-customers' app
+    const hasAccess = isGlobalAdmin || allowedApps.includes('tasty-customers');
 
-    if (!hasAdminRole) {
-      throw new Error('Unauthorized: Insufficient permissions');
+    if (!hasAccess) {
+      throw new Error('Unauthorized: Insufficient permissions for Tasty Customers app');
     }
     return decoded;
   } catch (err) {

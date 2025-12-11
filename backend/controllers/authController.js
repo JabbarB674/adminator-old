@@ -13,32 +13,38 @@ exports.login = async (req, res) => {
     try {
         console.log('Login request body:', req.body);
 
-        const query = 'SELECT UserId, Email, PasswordHash, Role, FirstName, LastName FROM Adminator_Users WHERE Email = @Email;';
+        const query = 'EXEC sp_Adminator_Login @Email = @Email;';
         const params = [{ name: 'Email', type: TYPES.NVarChar, value: email }];
 
-        const rows = await executeQuery(query, params);
+        const resultSets = await executeQuery(query, params);
 
-        console.log('Query result:', rows);
+        console.log('Query result sets:', resultSets.length);
 
-        if (rows.length === 0) {
+        // Result Set 1: User Info
+        const userRows = resultSets[0] || [];
+        if (userRows.length === 0) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        // Helper to safely get value by column name
-        const getValue = (row, colName) => {
-            const col = row.find(c => c.metadata.colName === colName);
-            return col ? col.value : null;
+        const userRow = userRows[0];
+        const user = {
+            userId: userRow.UserId,
+            email: userRow.Email,
+            passwordHash: userRow.PasswordHash,
+            firstName: userRow.FirstName,
+            lastName: userRow.LastName,
+            profileId: userRow.ProfileId,
+            profileName: userRow.ProfileName,
+            isGlobalAdmin: userRow.IsGlobalAdmin
         };
 
-        const row = rows[0];
-        const user = {
-            userId: getValue(row, 'UserId'),
-            email: getValue(row, 'Email'),
-            passwordHash: getValue(row, 'PasswordHash'),
-            role: getValue(row, 'Role'),
-            firstName: getValue(row, 'FirstName'),
-            lastName: getValue(row, 'LastName')
-        };
+        // Result Set 2: Allowed Apps
+        const appRows = resultSets[1] || [];
+        const allowedApps = appRows.map(row => ({
+            appId: row.AppId,
+            appKey: row.AppKey,
+            appName: row.AppName
+        }));
 
         const isValid = await bcrypt.compare(password, user.passwordHash);
 
@@ -49,7 +55,13 @@ exports.login = async (req, res) => {
         }
 
         const token = jwt.sign(
-            { userId: user.userId, email: user.email, role: user.role },
+            { 
+                userId: user.userId, 
+                email: user.email, 
+                profileId: user.profileId,
+                isGlobalAdmin: user.isGlobalAdmin,
+                allowedApps: allowedApps.map(a => a.appKey) // Store keys in token for easy checking
+            },
             process.env.JWT_SECRET,
             { expiresIn: '24h' }
         );
@@ -62,7 +74,9 @@ exports.login = async (req, res) => {
                 email: user.email,
                 firstName: user.firstName,
                 lastName: user.lastName,
-                role: user.role
+                profileName: user.profileName,
+                isGlobalAdmin: user.isGlobalAdmin,
+                allowedApps: allowedApps
             }
         });
 
