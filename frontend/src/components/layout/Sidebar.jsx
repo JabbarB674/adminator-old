@@ -46,6 +46,9 @@ export default function Sidebar() {
               <NavLink to="/settings/app-configuration" className={({ isActive }) => `nav-item nav-subitem ${isActive ? 'active' : ''}`}>
                 App Configuration
               </NavLink>
+              <NavLink to="/settings/app-editor" className={({ isActive }) => `nav-item nav-subitem ${isActive ? 'active' : ''}`}>
+                App Editor (New)
+              </NavLink>
               <NavLink to="/settings/nuclear-commands" className={({ isActive }) => `nav-item nav-subitem ${isActive ? 'active' : ''}`}>
                 Nuclear Commands
               </NavLink>

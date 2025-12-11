@@ -10,6 +10,7 @@ import UserControl from "./pages/UserControl";
 import UserPermissions from "./pages/UserPermissions";
 import MyDetails from "./pages/settings/MyDetails";
 import AppConfiguration from "./pages/settings/AppConfiguration";
+import AppEditor from "./pages/settings/AppEditor";
 import NuclearCommands from "./pages/settings/NuclearCommands";
 import CurlTool from "./pages/tools/CurlTool";
 import DbLookup from "./pages/tools/DbLookup";
@@ -39,6 +40,7 @@ function App() {
             <Route path="/user-permissions" element={<UserPermissions />} />
             <Route path="/settings/my-details" element={<MyDetails />} />
             <Route path="/settings/app-configuration" element={<AppConfiguration />} />
+            <Route path="/settings/app-editor" element={<AppEditor />} />
             <Route path="/settings/nuclear-commands" element={<NuclearCommands />} />
             <Route path="/tools/curl" element={<CurlTool />} />
             <Route path="/tools/db-lookup" element={<DbLookup />} />
