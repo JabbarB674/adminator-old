@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 
 // Get all users with their profile info
 exports.getUsers = async (req, res) => {
+    console.log(`[USERS] Fetching user list requested by: ${req.user ? req.user.email : 'Unknown'}`);
     try {
         const query = `
             SELECT 
@@ -17,9 +18,10 @@ exports.getUsers = async (req, res) => {
         const resultSets = await executeQuery(query, []);
         const users = resultSets[0] || [];
         
+        console.log(`[USERS] Retrieved ${users.length} users`);
         res.json(users);
     } catch (error) {
-        console.error('Error fetching users:', error);
+        console.error('[USERS] Error fetching users:', error);
         res.status(500).json({ error: 'Failed to fetch users' });
     }
 };
@@ -40,7 +42,10 @@ exports.getProfiles = async (req, res) => {
 exports.createUser = async (req, res) => {
     const { email, password, firstName, lastName, profileId, isActive } = req.body;
 
+    console.log(`[USERS] Creating new user: ${email}`);
+
     if (!email || !password || !profileId) {
+        console.warn('[USERS] Creation failed: Missing required fields');
         return res.status(400).json({ error: 'Email, password, and profile are required' });
     }
 
@@ -51,6 +56,7 @@ exports.createUser = async (req, res) => {
         const checkResult = await executeQuery(checkQuery, checkParams);
         
         if (checkResult[0][0].count > 0) {
+            console.warn(`[USERS] Creation failed: Email ${email} already exists`);
             return res.status(400).json({ error: 'Email already in use' });
         }
 
@@ -74,9 +80,10 @@ exports.createUser = async (req, res) => {
 
         await executeQuery(insertQuery, params);
 
+        console.log(`[USERS] User created successfully: ${email}`);
         res.status(201).json({ message: 'User created successfully' });
     } catch (error) {
-        console.error('Error creating user:', error);
+        console.error('[USERS] Error creating user:', error);
         res.status(500).json({ error: 'Failed to create user' });
     }
 };

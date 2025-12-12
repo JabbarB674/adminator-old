@@ -14,6 +14,22 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// Request Logging Middleware
+app.use((req, res, next) => {
+    const start = Date.now();
+    const { method, url, ip } = req;
+    
+    console.log(`[REQUEST] ${method} ${url} - IP: ${ip}`);
+
+    // Log response status and time on finish
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        console.log(`[RESPONSE] ${method} ${url} ${res.statusCode} - ${duration}ms`);
+    });
+
+    next();
+});
+
 // Serve static files from uploads directory
 // Use the same path as the controller
 const UPLOAD_DIR = process.env.STORAGE_PATH || path.join(__dirname, 'uploads');

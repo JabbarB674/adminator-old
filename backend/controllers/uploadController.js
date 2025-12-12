@@ -31,6 +31,7 @@ const normalizeS3Key = (p) => {
 
 exports.uploadFile = async (req, res) => {
     if (!req.file) {
+        console.warn('[UPLOAD] Upload failed: No file provided');
         return res.status(400).json({ error: 'No file uploaded' });
     }
 
@@ -42,6 +43,7 @@ exports.uploadFile = async (req, res) => {
         }
 
         const key = targetDir + req.file.originalname;
+        console.log(`[UPLOAD] Starting upload: ${key} (${req.file.size} bytes) by ${req.user ? req.user.email : 'Unknown'}`);
 
         const command = new PutObjectCommand({
             Bucket: BUCKET_NAME,
@@ -52,6 +54,7 @@ exports.uploadFile = async (req, res) => {
 
         await s3Client.send(command);
 
+        console.log(`[UPLOAD] Upload successful: ${key}`);
         const fileUrl = `/api/upload/view?key=${encodeURIComponent(key)}`;
 
         res.json({
@@ -60,7 +63,7 @@ exports.uploadFile = async (req, res) => {
             filename: req.file.originalname
         });
     } catch (err) {
-        console.error('Upload error:', err);
+        console.error('[UPLOAD] Upload error:', err);
         res.status(500).json({ 
             error: err.message || 'An error occurred uploading file',
             code: err.Code || err.code,
@@ -74,6 +77,8 @@ exports.listFiles = async (req, res) => {
         const reqPath = req.query.path || '';
         let prefix = normalizeS3Key(reqPath);
         if (prefix && !prefix.endsWith('/')) prefix += '/';
+
+        console.log(`[UPLOAD] Listing files in: ${prefix || 'root'}`);
 
         const command = new ListObjectsV2Command({
             Bucket: BUCKET_NAME,

@@ -53,6 +53,7 @@ exports.testConnection = async (req, res) => {
 
 exports.getData = async (req, res) => {
     const { appKey, tableName } = req.params;
+    console.log(`[RemoteDB] Fetching data for table '${tableName}' in app '${appKey}'`);
     try {
         const appConfig = await getAppConfig(appKey);
         const dataSource = appConfig.dataSource;
@@ -60,6 +61,7 @@ exports.getData = async (req, res) => {
         // Validate table access
         const tableConfig = dataSource.tables?.find(t => t.name === tableName);
         if (!tableConfig) {
+            console.warn(`[RemoteDB] Access denied: Table '${tableName}' not exposed`);
             return res.status(403).json({ error: `Table '${tableName}' is not exposed in this app.` });
         }
 
@@ -69,6 +71,7 @@ exports.getData = async (req, res) => {
             return res.status(501).json({ error: 'Only MSSQL supported for data operations currently.' });
         }
     } catch (err) {
+        console.error('[RemoteDB] Error fetching data:', err);
         res.status(500).json({ error: err.message });
     }
 };
@@ -76,6 +79,8 @@ exports.getData = async (req, res) => {
 exports.updateData = async (req, res) => {
     const { appKey, tableName } = req.params;
     const { updates, primaryKey } = req.body;
+
+    console.log(`[RemoteDB] Updating data in '${tableName}' (App: ${appKey})`);
 
     try {
         const appConfig = await getAppConfig(appKey);
@@ -86,6 +91,7 @@ exports.updateData = async (req, res) => {
             return res.status(403).json({ error: `Table '${tableName}' is not exposed.` });
         }
         if (!tableConfig.allowEdit) {
+             console.warn(`[RemoteDB] Update denied: Table '${tableName}' is read-only`);
              return res.status(403).json({ error: `Table '${tableName}' is read-only.` });
         }
 
@@ -107,15 +113,19 @@ exports.runAction = async (req, res) => {
     const { appKey, actionId } = req.params;
     const { payload } = req.body;
 
+    console.log(`[RemoteDB] Running action '${actionId}' for app '${appKey}' by ${req.user ? req.user.email : 'Unknown'}`);
+
     try {
         const appConfig = await getAppConfig(appKey);
         const action = appConfig.actions?.find(a => a.id === actionId);
 
         if (!action) {
+            console.warn(`[RemoteDB] Action '${actionId}' not found in config`);
             return res.status(404).json({ error: `Action '${actionId}' not found.` });
         }
 
         if (action.type === 'http') {
+            console.log(`[RemoteDB] Executing HTTP action: ${action.method} ${action.url}`);
             try {
                 const response = await axios({
                     method: action.method || 'GET',
@@ -123,12 +133,14 @@ exports.runAction = async (req, res) => {
                     headers: action.headers || {},
                     data: payload
                 });
+                console.log(`[RemoteDB] HTTP action success: ${response.status}`);
                 return res.json({ 
                     success: true,
                     status: response.status, 
                     data: response.data 
                 });
             } catch (httpErr) {
+                console.error(`[RemoteDB] HTTP action failed: ${httpErr.message}`);
                 return res.status(502).json({ 
                     error: 'Upstream Request Failed', 
                     details: httpErr.message,
@@ -137,6 +149,7 @@ exports.runAction = async (req, res) => {
             }
 
         } else if (action.type === 'sql') {
+            console.log(`[RemoteDB] Executing SQL action`);
             const dataSource = appConfig.dataSource;
             if (!dataSource) return res.status(500).json({ error: 'No data source configured.' });
 

@@ -3,6 +3,8 @@
 exports.executeQuery = async (req, res) => {
     const { query } = req.body;
     
+    console.log(`[DB_DIRECT] Executing raw query by ${req.user ? req.user.email : 'Unknown'}`);
+
     if (!query) {
         return res.status(400).json({ error: 'Query is required' });
     }
@@ -14,11 +16,14 @@ exports.executeQuery = async (req, res) => {
         // Flatten if single result set, or return first one as primary recordset
         const recordset = resultSets.length > 0 ? resultSets[0] : [];
 
+        console.log(`[DB_DIRECT] Query executed successfully. Rows: ${recordset.length}`);
+
         res.json({
             rowsAffected: [recordset.length], // Approximation since our db wrapper doesn't return affected count
             recordset: recordset
         });
     } catch (err) {
+        console.error('[DB_DIRECT] Query execution failed:', err);
         res.status(500).json({ error: err.message });
     }
 };

@@ -2,12 +2,14 @@ const { executeQuery } = require('../config/db');
 const { TYPES } = require('tedious');
 
 exports.getAllApps = async (req, res) => {
+    console.log(`[APPS] Fetching all apps for user: ${req.user ? req.user.email : 'Unknown'}`);
     try {
         const query = 'SELECT AppId, AppKey, AppName, Description, AppIcon, RoutePath FROM Adminator_Apps WHERE IsActive = 1 ORDER BY AppName';
         const resultSets = await executeQuery(query, []);
+        console.log(`[APPS] Found ${resultSets[0] ? resultSets[0].length : 0} apps`);
         res.json(resultSets[0] || []);
     } catch (error) {
-        console.error('Error fetching apps:', error);
+        console.error('[APPS] Error fetching apps:', error);
         res.status(500).json({ error: 'Failed to fetch apps' });
     }
 };
@@ -33,12 +35,15 @@ exports.saveAppConfig = async (req, res) => {
         const config = req.body;
         let appKey = req.params.appKey || config.meta?.appKey || 'unknown-app';
         
+        console.log(`[APPS] Saving config for app: ${appKey} by user: ${req.user ? req.user.email : 'Unknown'}`);
+
         // Ensure appKey is URL safe for folder names
         appKey = appKey.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase();
 
         const filename = `apps/${appKey}/config.json`;
         
         // 1. Save to S3
+        console.log(`[APPS] Uploading config to S3: ${filename}`);
         const command = new PutObjectCommand({
             Bucket: BUCKET_NAME,
             Key: filename,
@@ -47,6 +52,7 @@ exports.saveAppConfig = async (req, res) => {
         });
 
         await s3Client.send(command);
+        console.log(`[APPS] S3 upload successful`);
 
         // 2. Clean up legacy file if exists
         try {

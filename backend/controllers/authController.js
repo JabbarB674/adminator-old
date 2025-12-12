@@ -6,27 +6,41 @@ const { executeQuery } = require('../config/db');
 exports.login = async (req, res) => {
     const { email, password } = req.body;
 
+    console.log(`[AUTH] Login attempt for: ${email}`);
+
     if (!email || !password) {
+        console.warn(`[AUTH] Login failed: Missing credentials for ${email}`);
         return res.status(400).json({ error: 'Email and password are required' });
     }
 
     try {
-        console.log('Login request body:', req.body);
+        // console.log('Login request body:', req.body); // Redundant with above log
 
         const query = 'EXEC sp_Adminator_Login @Email = @Email;';
         const params = [{ name: 'Email', type: TYPES.NVarChar, value: email }];
 
         const resultSets = await executeQuery(query, params);
 
-        console.log('Query result sets:', resultSets.length);
+        // console.log('Query result sets:', resultSets.length);
 
         // Result Set 1: User Info
         const userRows = resultSets[0] || [];
         if (userRows.length === 0) {
+            console.warn(`[AUTH] Login failed: User not found or invalid credentials for ${email}`);
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
         const userRow = userRows[0];
+        
+        // Verify password
+        const isMatch = await bcrypt.compare(password, userRow.PasswordHash);
+        if (!isMatch) {
+            console.warn(`[AUTH] Login failed: Invalid password for ${email}`);
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        console.log(`[AUTH] Login success: ${email} (ID: ${userRow.UserId})`);
+
         const user = {
             userId: userRow.UserId,
             email: userRow.Email,
@@ -58,13 +72,7 @@ exports.login = async (req, res) => {
             configPath: row.ConfigPath
         }));
 
-        const isValid = await bcrypt.compare(password, user.passwordHash);
-
-        console.log('Password validation result:', isValid);
-
-        if (!isValid) {
-            return res.status(401).json({ error: 'Invalid credentials' });
-        }
+        // Password validation moved up
 
         const token = jwt.sign(
             { 
