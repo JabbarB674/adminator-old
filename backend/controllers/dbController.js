@@ -4,9 +4,17 @@ exports.executeQuery = async (req, res) => {
     const { query } = req.body;
     
     console.log(`[DB_DIRECT] Executing raw query by ${req.user ? req.user.email : 'Unknown'}`);
+    console.log(`[SECURITY AUDIT] RAW SQL EXECUTION ATTEMPT: ${query.substring(0, 100)}... by ${req.user ? req.user.email : 'Unknown'}`);
 
     if (!query) {
         return res.status(400).json({ error: 'Query is required' });
+    }
+
+    // Safety Check: Block catastrophic commands
+    const dangerousPatterns = /\b(DROP\s+DATABASE|DROP\s+TABLE|TRUNCATE\s+TABLE)\b/i;
+    if (dangerousPatterns.test(query)) {
+        console.error(`[SECURITY AUDIT] BLOCKED DESTRUCTIVE QUERY: ${query} by ${req.user ? req.user.email : 'Unknown'}`);
+        return res.status(403).json({ error: 'Destructive queries (DROP, TRUNCATE) are not allowed via this interface.' });
     }
 
     try {

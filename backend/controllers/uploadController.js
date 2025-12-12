@@ -24,7 +24,9 @@ exports.uploadMiddleware = upload.single('file');
 // Helper to normalize path for S3
 const normalizeS3Key = (p) => {
     if (!p) return '';
-    let key = p.replace(/\\/g, '/');
+    // Prevent path traversal
+    let key = p.replace(/\.\./g, ''); 
+    key = key.replace(/\\/g, '/');
     if (key.startsWith('/')) key = key.substring(1);
     return key;
 };

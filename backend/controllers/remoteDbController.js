@@ -30,6 +30,19 @@ const getAppConfig = async (appKey) => {
     }
 };
 
+// Helper to validate user access to app
+const validateAppAccess = (req, appKey) => {
+    // Global Admins have access to everything
+    if (req.user && req.user.isGlobalAdmin) return true;
+
+    // Check if appKey is in the user's allowed list
+    if (req.user && req.user.allowedApps && req.user.allowedApps.includes(appKey)) {
+        return true;
+    }
+
+    return false;
+};
+
 exports.testConnection = async (req, res) => {
     const { type, config } = req.body;
 
@@ -54,6 +67,12 @@ exports.testConnection = async (req, res) => {
 exports.getData = async (req, res) => {
     const { appKey, tableName } = req.params;
     console.log(`[RemoteDB] Fetching data for table '${tableName}' in app '${appKey}'`);
+
+    if (!validateAppAccess(req, appKey)) {
+        console.warn(`[RemoteDB] Access denied: User ${req.user.email} does not have permission for app ${appKey}`);
+        return res.status(403).json({ error: 'You do not have permission to access this app.' });
+    }
+
     try {
         const appConfig = await getAppConfig(appKey);
         const dataSource = appConfig.dataSource;
@@ -81,6 +100,11 @@ exports.updateData = async (req, res) => {
     const { updates, primaryKey } = req.body;
 
     console.log(`[RemoteDB] Updating data in '${tableName}' (App: ${appKey})`);
+
+    if (!validateAppAccess(req, appKey)) {
+        console.warn(`[RemoteDB] Update denied: User ${req.user.email} does not have permission for app ${appKey}`);
+        return res.status(403).json({ error: 'You do not have permission to access this app.' });
+    }
 
     try {
         const appConfig = await getAppConfig(appKey);
@@ -114,6 +138,11 @@ exports.runAction = async (req, res) => {
     const { payload } = req.body;
 
     console.log(`[RemoteDB] Running action '${actionId}' for app '${appKey}' by ${req.user ? req.user.email : 'Unknown'}`);
+
+    if (!validateAppAccess(req, appKey)) {
+        console.warn(`[RemoteDB] Action denied: User ${req.user.email} does not have permission for app ${appKey}`);
+        return res.status(403).json({ error: 'You do not have permission to access this app.' });
+    }
 
     try {
         const appConfig = await getAppConfig(appKey);

@@ -40,7 +40,15 @@ function executeQuery(query, params = []) {
             });
 
             console.log('Executing query:', query);
-            console.log('Query parameters:', params);
+            
+            // Redact sensitive parameters (Password) but keep PasswordHash and Token as requested
+            const safeParams = params.map(p => {
+                if (p.name.match(/Password$/i)) { // Matches "Password", "password", "UserPassword" etc.
+                    return { ...p, value: '[REDACTED]' };
+                }
+                return p;
+            });
+            console.log('Query parameters:', safeParams);
 
             params.forEach(p => {
                 request.addParameter(p.name, p.type, p.value);
