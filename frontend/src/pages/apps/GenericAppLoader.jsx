@@ -161,28 +161,20 @@ export default function GenericAppLoader() {
 
                     {/* DATA GRID WIDGET */}
                     {widget.type === 'data-grid' && (
-                        <div style={{ background: '#252525', borderRadius: '4px', border: '1px solid #333', overflow: 'hidden' }}>
-                            <div style={{ padding: '0.75rem 1rem', background: '#333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <h4 style={{ margin: 0, fontSize: '0.9rem' }}>Data Grid: {widget.table}</h4>
-                                <span style={{ fontSize: '0.75rem', color: '#aaa' }}>
-                                    {getTableInfo(widget.table)?.allowEdit ? 'Editable' : 'Read-Only'}
-                                </span>
-                            </div>
-                            
-                            <div style={{ padding: '1rem' }}>
-                                {getTableInfo(widget.table) ? (
-                                    <DataGrid 
-                                        appKey={appKey} 
-                                        tableName={widget.table} 
-                                        tableConfig={getTableInfo(widget.table)} 
-                                    />
-                                ) : (
-                                    <div style={{ color: '#ff4d4d', padding: '1rem' }}>
-                                        Table <strong>{widget.table}</strong> not found in Data Source configuration.
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                        <>
+                            {getTableInfo(widget.table) ? (
+                                <DataGrid 
+                                    appKey={appKey} 
+                                    tableName={widget.table} 
+                                    tableConfig={getTableInfo(widget.table)} 
+                                    showHeader={true}
+                                />
+                            ) : (
+                                <div style={{ color: '#ff4d4d', padding: '1rem', border: '1px solid #ff4d4d', borderRadius: '4px' }}>
+                                    Table <strong>{widget.table}</strong> not found in Data Source configuration.
+                                </div>
+                            )}
+                        </>
                     )}
 
                     {/* LEGACY LINK LIST */}

@@ -19,5 +19,6 @@ router.delete('/configs/:appKey(*)', protect, admin, appController.deleteAppConf
 
 // Data Proxy Routes (Protected by App Access logic in controller)
 router.get('/:appKey/data/:tableName', protect, remoteDbController.getData);
+router.put('/:appKey/data/:tableName', protect, remoteDbController.updateData);
 
 module.exports = router;

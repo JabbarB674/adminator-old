@@ -72,6 +72,36 @@ exports.getData = async (req, res) => {
     }
 };
 
+exports.updateData = async (req, res) => {
+    const { appKey, tableName } = req.params;
+    const { updates, primaryKey } = req.body;
+
+    try {
+        const appConfig = await getAppConfig(appKey);
+        const dataSource = appConfig.dataSource;
+        
+        const tableConfig = dataSource.tables?.find(t => t.name === tableName);
+        if (!tableConfig) {
+            return res.status(403).json({ error: `Table '${tableName}' is not exposed.` });
+        }
+        if (!tableConfig.allowEdit) {
+             return res.status(403).json({ error: `Table '${tableName}' is read-only.` });
+        }
+
+        if (dataSource.type === 'mssql') {
+            return updateMssqlData(dataSource.config, tableName, updates, primaryKey || 'id', res);
+        } else if (dataSource.type === 'postgres') {
+            return updatePostgresData(dataSource.config, tableName, updates, primaryKey || 'id', res);
+        } else if (dataSource.type === 'mysql') {
+            return updateMysqlData(dataSource.config, tableName, updates, primaryKey || 'id', res);
+        } else {
+            return res.status(501).json({ error: 'Only MSSQL, Postgres, and MySQL supported for updates.' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
 // --- MSSQL Helpers ---
 
 const getMssqlData = (config, tableName, res) => {
@@ -109,6 +139,156 @@ const getMssqlData = (config, tableName, res) => {
         connection.execSql(request);
     });
     connection.connect();
+};
+
+const updateMssqlData = (config, tableName, updates, pkCol, res) => {
+    const dbConfig = {
+        server: config.server,
+        authentication: { type: 'default', options: { userName: config.user, password: config.password } },
+        options: { database: config.database, port: parseInt(config.port) || 1433, encrypt: true, trustServerCertificate: true }
+    };
+
+    const connection = new Connection(dbConfig);
+    connection.on('connect', (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+
+        const safeTable = tableName.replace(/[^a-zA-Z0-9_.]/g, '');
+        const safePk = pkCol.replace(/[^a-zA-Z0-9_]/g, '');
+
+        let sql = '';
+        let errorMsg = null;
+
+        updates.forEach(update => {
+            const { key, changes } = update;
+            if (key === undefined || key === null) {
+                errorMsg = `Missing primary key value for update. Ensure '${pkCol}' is present in the row data.`;
+                return;
+            }
+
+            const setClause = Object.entries(changes).map(([col, val]) => {
+                const safeCol = col.replace(/[^a-zA-Z0-9_]/g, '');
+                const safeVal = val === null ? 'NULL' : `'${String(val).replace(/'/g, "''")}'`;
+                return `${safeCol} = ${safeVal}`;
+            }).join(', ');
+            
+            const safeKeyVal = typeof key === 'string' ? `'${key.replace(/'/g, "''")}'` : key;
+            
+            sql += `UPDATE ${safeTable} SET ${setClause} WHERE ${safePk} = ${safeKeyVal}; `;
+        });
+
+        if (errorMsg) {
+            connection.close();
+            return res.status(400).json({ error: errorMsg });
+        }
+
+        const request = new Request(sql, (err) => {
+            connection.close();
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true, message: `Updated ${updates.length} rows.` });
+        });
+
+        connection.execSql(request);
+    });
+    
+    connection.connect();
+};
+
+const updatePostgresData = async (config, tableName, updates, pkCol, res) => {
+    const client = new Client({
+        host: config.server,
+        port: parseInt(config.port) || 5432,
+        database: config.database,
+        user: config.user,
+        password: config.password,
+        ssl: { rejectUnauthorized: false }
+    });
+
+    try {
+        await client.connect();
+        
+        const safeTable = tableName.replace(/[^a-zA-Z0-9_.]/g, '');
+        const safePk = pkCol.replace(/[^a-zA-Z0-9_]/g, '');
+
+        // Postgres doesn't support multiple statements in one query easily without transaction blocks or multiple calls.
+        // We'll use a transaction.
+        await client.query('BEGIN');
+
+        for (const update of updates) {
+            const { key, changes } = update;
+            if (key === undefined || key === null) {
+                throw new Error(`Missing primary key value for update. Ensure '${pkCol}' is present in the row data.`);
+            }
+
+            const cols = Object.keys(changes).map(c => c.replace(/[^a-zA-Z0-9_]/g, ''));
+            const values = Object.values(changes);
+            
+            // Construct SET clause: col1 = $1, col2 = $2 ...
+            const setClause = cols.map((c, i) => `${c} = $${i + 1}`).join(', ');
+            
+            // Add key to values for WHERE clause
+            values.push(key);
+            
+            const query = `UPDATE ${safeTable} SET ${setClause} WHERE ${safePk} = $${values.length}`;
+            await client.query(query, values);
+        }
+
+        await client.query('COMMIT');
+        await client.end();
+        
+        res.json({ success: true, message: `Updated ${updates.length} rows.` });
+
+    } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (e) {} // Rollback if possible
+        try { await client.end(); } catch (e) {} // Ensure close
+        res.status(500).json({ error: 'Postgres Update Failed: ' + err.message });
+    }
+};
+
+const updateMysqlData = async (config, tableName, updates, pkCol, res) => {
+    let connection;
+    try {
+        connection = await mysql.createConnection({
+            host: config.server,
+            port: parseInt(config.port) || 3306,
+            user: config.user,
+            password: config.password,
+            database: config.database,
+            ssl: { rejectUnauthorized: false }
+        });
+
+        await connection.beginTransaction();
+
+        const safeTable = tableName.replace(/[^a-zA-Z0-9_.]/g, '');
+        const safePk = pkCol.replace(/[^a-zA-Z0-9_]/g, '');
+
+        for (const update of updates) {
+            const { key, changes } = update;
+            if (key === undefined || key === null) {
+                throw new Error(`Missing primary key value for update. Ensure '${pkCol}' is present in the row data.`);
+            }
+
+            const cols = Object.keys(changes).map(c => c.replace(/[^a-zA-Z0-9_]/g, ''));
+            const values = Object.values(changes);
+            
+            const setClause = cols.map(c => `${c} = ?`).join(', ');
+            values.push(key);
+
+            const query = `UPDATE ${safeTable} SET ${setClause} WHERE ${safePk} = ?`;
+            await connection.execute(query, values);
+        }
+
+        await connection.commit();
+        await connection.end();
+
+        res.json({ success: true, message: `Updated ${updates.length} rows.` });
+
+    } catch (err) {
+        if (connection) {
+            try { await connection.rollback(); } catch (e) {}
+            try { await connection.end(); } catch (e) {}
+        }
+        res.status(500).json({ error: 'MySQL Update Failed: ' + err.message });
+    }
 };
 
 const testMssql = (config, res) => {
