@@ -1,6 +1,33 @@
-const { Connection, Request } = require('tedious');
+const { Connection, Request, TYPES } = require('tedious');
 const { Client } = require('pg');
 const mysql = require('mysql2/promise');
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+
+// S3 Config (Duplicated for now, should be shared)
+const s3Client = new S3Client({
+    region: process.env.S3_REGION || 'us-east-1',
+    endpoint: process.env.S3_ENDPOINT || 'http://localhost:9000',
+    credentials: {
+        accessKeyId: process.env.S3_ACCESS_KEY || 'minioadmin',
+        secretAccessKey: process.env.S3_SECRET_KEY || 'minioadmin'
+    },
+    forcePathStyle: true
+});
+const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'adminator-storage';
+
+// Helper to get App Config
+const getAppConfig = async (appKey) => {
+    try {
+        const key = `apps/${appKey}/config.json`;
+        const command = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key });
+        const response = await s3Client.send(command);
+        const str = await response.Body.transformToString();
+        return JSON.parse(str);
+    } catch (e) {
+        console.error('Error loading app config:', e);
+        throw new Error('App configuration not found');
+    }
+};
 
 exports.testConnection = async (req, res) => {
     const { type, config } = req.body;
@@ -21,6 +48,67 @@ exports.testConnection = async (req, res) => {
         console.error('Controller Error:', err);
         return res.status(500).json({ error: 'Internal server error: ' + err.message });
     }
+};
+
+exports.getData = async (req, res) => {
+    const { appKey, tableName } = req.params;
+    try {
+        const appConfig = await getAppConfig(appKey);
+        const dataSource = appConfig.dataSource;
+        
+        // Validate table access
+        const tableConfig = dataSource.tables?.find(t => t.name === tableName);
+        if (!tableConfig) {
+            return res.status(403).json({ error: `Table '${tableName}' is not exposed in this app.` });
+        }
+
+        if (dataSource.type === 'mssql') {
+            return getMssqlData(dataSource.config, tableName, res);
+        } else {
+            return res.status(501).json({ error: 'Only MSSQL supported for data operations currently.' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// --- MSSQL Helpers ---
+
+const getMssqlData = (config, tableName, res) => {
+    const dbConfig = {
+        server: config.server,
+        authentication: { type: 'default', options: { userName: config.user, password: config.password } },
+        options: { database: config.database, port: parseInt(config.port) || 1433, encrypt: true, trustServerCertificate: true, rowCollectionOnRequestCompletion: true }
+    };
+
+    const connection = new Connection(dbConfig);
+    connection.on('connect', (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+
+        // Simple SELECT TOP 100 *
+        // WARNING: Vulnerable to SQL Injection if tableName is not validated. 
+        // We validated tableName against the config list above, which is safe-ish if config is trusted.
+        // Ideally use bracket escaping.
+        const safeTable = tableName.replace(/[^a-zA-Z0-9_.]/g, ''); 
+        const query = `SELECT TOP 100 * FROM ${safeTable}`;
+
+        const request = new Request(query, (err, rowCount, rows) => {
+            connection.close();
+            if (err) return res.status(500).json({ error: err.message });
+
+            const result = [];
+            rows.forEach(row => {
+                const obj = {};
+                row.forEach(col => {
+                    obj[col.metadata.colName] = col.value;
+                });
+                result.push(obj);
+            });
+            res.json(result);
+        });
+        connection.execSql(request);
+    });
+    connection.connect();
 };
 
 const testMssql = (config, res) => {

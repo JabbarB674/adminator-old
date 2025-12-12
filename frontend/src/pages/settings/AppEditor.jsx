@@ -467,6 +467,8 @@ export default function AppEditor() {
               <p className="hint">Define the dashboard structure using the visual editor below.</p>
               <LayoutEditor 
                 layout={config.layout} 
+                dataSource={config.dataSource}
+                actions={config.actions}
                 onChange={(newLayout) => setConfig(prev => ({ ...prev, layout: newLayout }))}
               />
             </div>

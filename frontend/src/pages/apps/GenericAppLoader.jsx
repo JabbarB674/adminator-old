@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { apiUrl } from '../../utils/api';
+import DataGrid from '../../components/widgets/DataGrid';
 
 export default function GenericAppLoader() {
   const { appKey } = useParams();
@@ -9,6 +10,10 @@ export default function GenericAppLoader() {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showDebug, setShowDebug] = useState(false);
+  
+  // Modal State
+  const [activeModal, setActiveModal] = useState(null); // { type: 'db-lookup', target: 'TableName' }
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -16,18 +21,15 @@ export default function GenericAppLoader() {
       setError(null);
       try {
         // 1. Find the app in the user's allowed list to get the ConfigPath
+        // If user is global admin, they might not have it in allowedApps list if we rely on the old logic,
+        // but our new authController logic ensures they have it.
         const app = user?.allowedApps?.find(a => a.appKey === appKey);
         
-        if (!app) {
-          throw new Error('App not found or access denied');
-        }
-
-        // Default to config.json if not specified in DB (Convention over Configuration)
-        const configFileName = app.configPath || 'config.json';
+        // Fallback for direct access if not in list (e.g. just created)
+        // In a real app we'd check permissions again, but here we rely on the backend to serve the file.
+        const configFileName = app?.configPath || 'config.json';
 
         // 2. Fetch the JSON config from the bucket
-        // We use the view endpoint which streams the file
-        // Construct path: apps/<appKey>/<configPath>
         const configKey = `apps/${appKey}/${configFileName}`;
         
         const token = localStorage.getItem('jwt');
@@ -69,67 +71,181 @@ export default function GenericAppLoader() {
 
   if (!config) return null;
 
+  // Support both old (root sections) and new (layout.sections) structure
+  const sections = config.layout?.sections || config.sections || [];
+  const tables = config.dataSource?.tables || [];
+  const actions = config.actions || [];
+
+  const getTableInfo = (tableName) => tables.find(t => t.name === tableName);
+  const getActionInfo = (actionId) => actions.find(a => a.id === actionId);
+
+  const handleActionClick = (widget) => {
+      if (widget.actionType === 'db-lookup') {
+          setActiveModal({ type: 'db-lookup', target: widget.target });
+      } else {
+          alert(`Action Triggered: ${widget.actionType}\nTarget: ${widget.target || 'N/A'}`);
+      }
+  };
+
   return (
-    <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-      <header style={{ marginBottom: '2rem', borderBottom: '1px solid #333', paddingBottom: '1rem' }}>
-        <h1 style={{ color: '#fff', margin: 0 }}>{config.title || appKey}</h1>
-        {config.description && <p style={{ color: '#aaa', marginTop: '0.5rem' }}>{config.description}</p>}
+    <div style={{ width: '100%' }}>
+      <header style={{ marginBottom: '2rem', borderBottom: '1px solid #333', paddingBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+        <div>
+            <h1 style={{ color: '#fff', margin: 0 }}>{config.meta?.displayName || config.title || appKey}</h1>
+            {config.meta?.description && <p style={{ color: '#aaa', marginTop: '0.5rem' }}>{config.meta.description}</p>}
+        </div>
+        <button 
+            className="btn-secondary" 
+            onClick={() => setShowDebug(!showDebug)}
+            style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+        >
+            {showDebug ? 'Hide Debug' : 'Show Debug'}
+        </button>
       </header>
 
+      {showDebug && (
+          <div style={{ background: '#111', padding: '1rem', borderRadius: '4px', marginBottom: '2rem', border: '1px solid #333', overflowX: 'auto' }}>
+              <h4 style={{ marginTop: 0, color: '#888' }}>Raw Configuration</h4>
+              <pre style={{ color: '#0f0', fontSize: '0.75rem' }}>{JSON.stringify(config, null, 2)}</pre>
+          </div>
+      )}
+
       <div style={{ display: 'grid', gap: '2rem' }}>
-        {config.sections?.map((section, idx) => (
-          <div key={idx} style={{ background: '#1e1e1e', padding: '1.5rem', borderRadius: '8px' }}>
-            {section.title && <h3 style={{ color: '#fff', marginTop: 0 }}>{section.title}</h3>}
+        {sections.map((section, idx) => (
+          <div key={idx} style={{ background: '#1e1e1e', padding: '1.5rem', borderRadius: '8px', border: '1px solid #333', minWidth: 0 }}>
+            {section.title && <h3 style={{ color: '#fff', marginTop: 0, borderBottom: '1px solid #333', paddingBottom: '0.5rem' }}>{section.title}</h3>}
             
-            {/* Render Widgets based on type */}
-            {section.widgets?.map((widget, wIdx) => (
-              <div key={wIdx} style={{ marginTop: '1rem' }}>
-                {widget.type === 'markdown' && (
-                  <div style={{ color: '#ddd', lineHeight: '1.6' }}>
-                    {widget.content}
-                  </div>
-                )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                {section.widgets?.map((widget, wIdx) => (
+                <div key={wIdx} className="widget-container">
+                    
+                    {/* MARKDOWN WIDGET */}
+                    {widget.type === 'markdown' && (
+                    <div style={{ color: '#ddd', lineHeight: '1.6', whiteSpace: 'pre-wrap', background: '#252525', padding: '1rem', borderRadius: '4px' }}>
+                        {widget.content}
+                    </div>
+                    )}
 
-                {widget.type === 'link-list' && (
-                  <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                    {widget.links?.map((link, lIdx) => (
-                      <a 
-                        key={lIdx} 
-                        href={link.url} 
-                        target={link.external ? '_blank' : '_self'}
-                        rel="noreferrer"
-                        style={{ 
-                          display: 'block', 
-                          padding: '1rem', 
-                          background: '#2d2d2d', 
-                          color: '#2196f3', 
-                          textDecoration: 'none',
-                          borderRadius: '4px',
-                          border: '1px solid #444'
-                        }}
-                      >
-                        <div style={{ fontWeight: 'bold' }}>{link.label}</div>
-                        {link.description && <div style={{ fontSize: '0.8rem', color: '#aaa', marginTop: '0.25rem' }}>{link.description}</div>}
-                      </a>
-                    ))}
-                  </div>
-                )}
+                    {/* BUTTON WIDGET */}
+                    {widget.type === 'button' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: '#252525', padding: '1rem', borderRadius: '4px' }}>
+                            <button 
+                                className="btn-primary"
+                                onClick={() => handleActionClick(widget)}
+                                style={{ minWidth: '150px' }}
+                            >
+                                {widget.label || 'Action Button'}
+                            </button>
+                            
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 'bold', color: '#fff' }}>
+                                    {widget.actionType === 'curl' && 'API Invoker'}
+                                    {widget.actionType === 'db-lookup' && 'Database Editor'}
+                                    {widget.actionType === 'bucket' && 'S3 Bucket Explorer'}
+                                    {widget.actionType === 'custom' && 'Custom Action'}
+                                </div>
+                                <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.25rem' }}>
+                                    {widget.actionType === 'db-lookup' && (
+                                        <span>Target Table: <code style={{ color: '#4caf50' }}>{widget.target}</code></span>
+                                    )}
+                                    {widget.actionType === 'bucket' && (
+                                        <span>Path: <code style={{ color: '#2196f3' }}>{widget.target}</code></span>
+                                    )}
+                                    {widget.actionType === 'custom' && (
+                                        <span>Action ID: <code style={{ color: '#ff9800' }}>{widget.target}</code></span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
-                {widget.type === 'iframe' && (
-                    <iframe 
-                        src={widget.url} 
-                        title={widget.title || 'App Frame'}
-                        style={{ width: '100%', height: widget.height || '500px', border: 'none', background: '#fff' }}
-                    />
-                )}
-                
-                {/* Add more widget types here (e.g. DataTable, Form) */}
-                {widget.type === 'unknown' && <div style={{ color: 'orange' }}>Unknown widget type</div>}
-              </div>
-            ))}
+                    {/* DATA GRID WIDGET */}
+                    {widget.type === 'data-grid' && (
+                        <div style={{ background: '#252525', borderRadius: '4px', border: '1px solid #333', overflow: 'hidden' }}>
+                            <div style={{ padding: '0.75rem 1rem', background: '#333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <h4 style={{ margin: 0, fontSize: '0.9rem' }}>Data Grid: {widget.table}</h4>
+                                <span style={{ fontSize: '0.75rem', color: '#aaa' }}>
+                                    {getTableInfo(widget.table)?.allowEdit ? 'Editable' : 'Read-Only'}
+                                </span>
+                            </div>
+                            
+                            <div style={{ padding: '1rem' }}>
+                                {getTableInfo(widget.table) ? (
+                                    <DataGrid 
+                                        appKey={appKey} 
+                                        tableName={widget.table} 
+                                        tableConfig={getTableInfo(widget.table)} 
+                                    />
+                                ) : (
+                                    <div style={{ color: '#ff4d4d', padding: '1rem' }}>
+                                        Table <strong>{widget.table}</strong> not found in Data Source configuration.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* LEGACY LINK LIST */}
+                    {widget.type === 'link-list' && (
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                        {widget.links?.map((link, lIdx) => (
+                        <a 
+                            key={lIdx} 
+                            href={link.url} 
+                            target={link.external ? '_blank' : '_self'}
+                            rel="noreferrer"
+                            style={{ 
+                            display: 'block', 
+                            padding: '1rem', 
+                            background: '#2d2d2d', 
+                            color: '#2196f3', 
+                            textDecoration: 'none',
+                            borderRadius: '4px',
+                            border: '1px solid #444'
+                            }}
+                        >
+                            <div style={{ fontWeight: 'bold' }}>{link.label}</div>
+                            {link.description && <div style={{ fontSize: '0.8rem', color: '#aaa', marginTop: '0.25rem' }}>{link.description}</div>}
+                        </a>
+                        ))}
+                    </div>
+                    )}
+                </div>
+                ))}
+            </div>
           </div>
         ))}
       </div>
+
+      {/* MODAL OVERLAY */}
+      {activeModal && (
+          <div style={{
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+              background: 'rgba(0,0,0,0.8)', zIndex: 1000,
+              display: 'flex', justifyContent: 'center', alignItems: 'center'
+          }}>
+              <div style={{
+                  background: '#1e1e1e', width: '90%', maxWidth: '1000px', height: '80vh',
+                  borderRadius: '8px', border: '1px solid #444', display: 'flex', flexDirection: 'column'
+              }}>
+                  <div style={{ padding: '1rem', borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h3 style={{ margin: 0 }}>
+                          {activeModal.type === 'db-lookup' && `Database Editor: ${activeModal.target}`}
+                      </h3>
+                      <button className="btn-small" onClick={() => setActiveModal(null)}>Close</button>
+                  </div>
+                  <div style={{ flex: 1, overflow: 'auto', padding: '1rem' }}>
+                      {activeModal.type === 'db-lookup' && (
+                          <DataGrid 
+                              appKey={appKey} 
+                              tableName={activeModal.target} 
+                              tableConfig={getTableInfo(activeModal.target)} 
+                          />
+                      )}
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 }

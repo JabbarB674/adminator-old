@@ -39,7 +39,15 @@ exports.login = async (req, res) => {
         };
 
         // Result Set 2: Allowed Apps
-        const appRows = resultSets[1] || [];
+        let appRows = resultSets[1] || [];
+
+        // FORCE SUPERADMIN ACCESS: If Global Admin, fetch ALL apps regardless of SP result
+        if (user.isGlobalAdmin) {
+            const allAppsQuery = 'SELECT AppId, AppKey, AppName, Description, AppIcon, RoutePath, ConfigPath FROM Adminator_Apps WHERE IsActive = 1 ORDER BY AppName';
+            const allAppsResult = await executeQuery(allAppsQuery);
+            appRows = allAppsResult[0] || [];
+        }
+
         const allowedApps = appRows.map(row => ({
             appId: row.AppId,
             appKey: row.AppKey,
@@ -117,7 +125,15 @@ exports.refreshProfile = async (req, res) => {
         };
 
         // Result Set 2: Allowed Apps
-        const appRows = resultSets[1] || [];
+        let appRows = resultSets[1] || [];
+
+        // FORCE SUPERADMIN ACCESS: If Global Admin, fetch ALL apps regardless of SP result
+        if (user.isGlobalAdmin) {
+            const allAppsQuery = 'SELECT AppId, AppKey, AppName, Description, AppIcon, RoutePath, ConfigPath FROM Adminator_Apps WHERE IsActive = 1 ORDER BY AppName';
+            const allAppsResult = await executeQuery(allAppsQuery);
+            appRows = allAppsResult[0] || [];
+        }
+
         const allowedApps = appRows.map(row => ({
             appId: row.AppId,
             appKey: row.AppKey,
