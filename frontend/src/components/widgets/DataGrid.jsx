@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../../utils/api';
+import { useNotification } from '../../context/NotificationContext';
 
 export default function DataGrid({ appKey, tableName, tableConfig, showHeader = true }) {
+    const { showNotification } = useNotification();
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -87,7 +89,7 @@ export default function DataGrid({ appKey, tableName, tableConfig, showHeader = 
 
             await fetchData(); // Refresh data
         } catch (err) {
-            alert('Error saving: ' + err.message);
+            showNotification('Error saving: ' + err.message);
         } finally {
             setSaving(false);
         }

@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../../utils/api';
 import FileUploader from '../../components/shared/FileUploader';
 import { useAuth } from '../../context/AuthContext';
+import { useNotification } from '../../context/NotificationContext';
 
 export default function BucketExplorer() {
   const { user } = useAuth();
+  const { showNotification } = useNotification();
   const [currentPath, setCurrentPath] = useState('');
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -92,7 +94,7 @@ export default function BucketExplorer() {
       fetchItems(currentPath);
     } catch (err) {
       console.error(err);
-      alert(err.message);
+      showNotification(err.message);
     }
   };
 
@@ -114,7 +116,7 @@ export default function BucketExplorer() {
       if (!res.ok) throw new Error('Failed to delete item');
       fetchItems(currentPath);
     } catch (err) {
-      alert(err.message);
+      showNotification(err.message);
     }
   };
 

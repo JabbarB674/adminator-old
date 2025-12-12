@@ -4,10 +4,12 @@ import DataSourceEditor from './editors/DataSourceEditor';
 import ActionEditor from './editors/ActionEditor';
 import { apiUrl } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
+import { useNotification } from '../../context/NotificationContext';
 import '../../styles/AppEditor.css';
 
 export default function AppEditor() {
   const { refreshUser } = useAuth();
+  const { showNotification } = useNotification();
   const fileInputRef = useRef(null);
   const iconInputRef = useRef(null);
   const [activeTab, setActiveTab] = useState('general');
@@ -86,7 +88,7 @@ export default function AppEditor() {
       }
     } catch (err) {
       console.error('Failed to load app', err);
-      alert('Failed to load app configuration');
+      showNotification('Failed to load app configuration');
     }
   };
 
@@ -113,18 +115,18 @@ export default function AppEditor() {
         });
         
         if (res.ok) {
-            alert('App deleted successfully');
+            showNotification('App deleted successfully');
             setShowDeleteModal(false);
             setDeleteConfirmation('');
             resetEditor();
             fetchExistingApps();
             refreshUser(); // Refresh sidebar
         } else {
-            alert('Failed to delete app');
+            showNotification('Failed to delete app');
         }
     } catch (err) {
         console.error(err);
-        alert('Error deleting app');
+        showNotification('Error deleting app');
     }
   };
 
@@ -152,7 +154,7 @@ export default function AppEditor() {
       
       const data = await res.json();
       if (res.ok) {
-        alert(`Saved successfully to: ${data.path}`);
+        showNotification(`Saved successfully to: ${data.path}`);
         fetchExistingApps(); // Refresh list
         refreshUser(); // Refresh sidebar
         setIsEditing(true); // Switch to edit mode
@@ -161,11 +163,11 @@ export default function AppEditor() {
             setLoadedAppKey(config.meta.appKey);
         }
       } else {
-        alert(`Save failed: ${data.error}`);
+        showNotification(`Save failed: ${data.error}`);
       }
     } catch (err) {
       console.error(err);
-      alert('Network error while saving');
+      showNotification('Network error while saving');
     } finally {
       setSaving(false);
     }
@@ -190,7 +192,7 @@ export default function AppEditor() {
             actions: json.actions || []
           });
         } catch (error) {
-          alert('Error parsing JSON: ' + error.message);
+          showNotification('Error parsing JSON: ' + error.message);
         }
       };
       reader.readAsText(file);
@@ -202,7 +204,7 @@ export default function AppEditor() {
       if (!file) return;
       
       if (!config.meta.appKey) {
-          alert('Please enter an App Key first.');
+          showNotification('Please enter an App Key first.');
           return;
       }
 
@@ -221,17 +223,17 @@ export default function AppEditor() {
           
           if (res.ok) {
               const data = await res.json();
-              alert('Icon uploaded successfully!');
+              showNotification('Icon uploaded successfully!');
               setConfig(prev => ({
                   ...prev,
                   meta: { ...prev.meta, icon: data.path }
               }));
           } else {
-              alert('Failed to upload icon');
+              showNotification('Failed to upload icon');
           }
       } catch (err) {
           console.error(err);
-          alert('Error uploading icon');
+          showNotification('Error uploading icon');
       }
   };
 

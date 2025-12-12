@@ -1,6 +1,7 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { NotificationProvider } from "./context/NotificationContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import MainLayout from "./layouts/MainLayout";
 import Login from "./pages/Login";
@@ -30,30 +31,32 @@ const ProtectedLayout = () => {
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          
-          <Route element={<ProtectedLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/user-control" element={<UserControl />} />
-            <Route path="/user-permissions" element={<UserPermissions />} />
-            <Route path="/settings/my-details" element={<MyDetails />} />
-            <Route path="/settings/app-configuration" element={<AppConfiguration />} />
-            <Route path="/settings/app-editor" element={<AppEditor />} />
-            <Route path="/settings/nuclear-commands" element={<NuclearCommands />} />
-            <Route path="/tools/curl" element={<CurlTool />} />
-            <Route path="/tools/db-lookup" element={<DbLookup />} />
-            <Route path="/tools/bucket-explorer" element={<BucketExplorer />} />
+      <NotificationProvider>
+        <Router>
+          <Routes>
+            <Route path="/login" element={<Login />} />
             
-            {/* Dynamic App Loader */}
-            <Route path="/apps/:appKey" element={<GenericAppLoader />} />
-          </Route>
+            <Route element={<ProtectedLayout />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/user-control" element={<UserControl />} />
+              <Route path="/user-permissions" element={<UserPermissions />} />
+              <Route path="/settings/my-details" element={<MyDetails />} />
+              <Route path="/settings/app-configuration" element={<AppConfiguration />} />
+              <Route path="/settings/app-editor" element={<AppEditor />} />
+              <Route path="/settings/nuclear-commands" element={<NuclearCommands />} />
+              <Route path="/tools/curl" element={<CurlTool />} />
+              <Route path="/tools/db-lookup" element={<DbLookup />} />
+              <Route path="/tools/bucket-explorer" element={<BucketExplorer />} />
+              
+              {/* Dynamic App Loader */}
+              <Route path="/apps/:appKey" element={<GenericAppLoader />} />
+            </Route>
 
-          <Route path="/" element={<Navigate to="/dashboard" />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Router>
+            <Route path="/" element={<Navigate to="/dashboard" />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Router>
+      </NotificationProvider>
     </AuthProvider>
   );
 }

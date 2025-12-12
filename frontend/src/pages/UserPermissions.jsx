@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../utils/api';
+import { useNotification } from '../context/NotificationContext';
 
 export default function UserPermissions() {
+  const { showNotification } = useNotification();
   const [users, setUsers] = useState([]);
   const [apps, setApps] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -48,7 +50,7 @@ export default function UserPermissions() {
       setApps(appsData);
     } catch (err) {
       console.error(err);
-      alert('Error loading data: ' + err.message);
+      showNotification('Error loading data: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -96,9 +98,9 @@ export default function UserPermissions() {
 
       if (!res.ok) throw new Error('Failed to save permissions');
       
-      alert('Permissions updated successfully');
+      showNotification('Permissions updated successfully');
     } catch (err) {
-      alert(err.message);
+      showNotification(err.message);
     } finally {
       setSaving(false);
     }

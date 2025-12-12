@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
 
 export default function UserControl() {
+  const { showNotification } = useNotification();
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [profiles, setProfiles] = useState([]);
@@ -105,7 +107,7 @@ export default function UserControl() {
       setShowModal(false);
       fetchData(); // Refresh list
     } catch (err) {
-      alert(err.message);
+      showNotification(err.message);
     }
   };
 

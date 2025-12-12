@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../../utils/api';
+import { useNotification } from '../../context/NotificationContext';
 
 export default function DataListEditor({ 
   title, 
@@ -11,6 +12,7 @@ export default function DataListEditor({
   allowDelete = false,
   allowEdit = true
 }) {
+  const { showNotification } = useNotification();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -60,7 +62,7 @@ export default function DataListEditor({
       setEditingItem(null);
       fetchItems();
     } catch (err) {
-      alert(err.message);
+      showNotification(err.message);
     }
   };
 
@@ -79,7 +81,7 @@ export default function DataListEditor({
       if (!res.ok) throw new Error('Failed to delete item');
       fetchItems();
     } catch (err) {
-      alert(err.message);
+      showNotification(err.message);
     }
   };
 

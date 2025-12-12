@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useNotification } from '../../context/NotificationContext';
 import { apiUrl } from '../../utils/api';
 import DataGrid from '../../components/widgets/DataGrid';
 
 export default function GenericAppLoader() {
   const { appKey } = useParams();
   const { user } = useAuth();
+  const { showNotification } = useNotification();
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -83,7 +85,7 @@ export default function GenericAppLoader() {
       if (widget.actionType === 'db-lookup') {
           setActiveModal({ type: 'db-lookup', target: widget.target });
       } else {
-          alert(`Action Triggered: ${widget.actionType}\nTarget: ${widget.target || 'N/A'}`);
+          showNotification(`Action Triggered: ${widget.actionType}\nTarget: ${widget.target || 'N/A'}`);
       }
   };
 

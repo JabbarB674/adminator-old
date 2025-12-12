@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
+import NotificationToast from '../shared/NotificationToast';
 import '../../styles/Header.css';
 
 export default function Header() {
@@ -60,7 +61,8 @@ export default function Header() {
   }
 
   return (
-    <header className="app-header">
+    <header className="app-header" style={{ position: 'relative' }}>
+      <NotificationToast />
       <div className="header-left">
         <Link to="/" className="tech-logo">Adminator</Link>
         <div className="header-path">
