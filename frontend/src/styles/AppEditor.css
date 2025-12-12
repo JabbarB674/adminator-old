@@ -58,8 +58,8 @@
 
 .editor-sidebar nav button.active {
   background-color: #2a2a2a;
-  color: #4caf50;
-  border-left-color: #4caf50;
+  color: var(--accent-color);
+  border-left-color: var(--accent-color);
   font-weight: 500;
 }
 
@@ -93,23 +93,67 @@
   font-size: 0.9rem;
 }
 
-.form-group input,
-.form-group textarea,
-.form-group select {
-  width: 100%;
-  padding: 0.75rem;
+/* Generic Input Styling for App Editor */
+.app-editor-container input[type="text"],
+.app-editor-container input[type="password"],
+.app-editor-container input[type="number"],
+.app-editor-container input[type="email"],
+.app-editor-container input[type="file"],
+.app-editor-container textarea,
+.app-editor-container select {
   background-color: #2a2a2a;
   border: 1px solid #444;
   border-radius: 4px;
   color: #fff;
-  font-size: 1rem;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.9rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  font-family: inherit;
 }
 
-.form-group input:focus,
-.form-group textarea:focus,
-.form-group select:focus {
+.app-editor-container input:focus,
+.app-editor-container textarea:focus,
+.app-editor-container select:focus {
   outline: none;
-  border-color: #4caf50;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(255, 0, 0, 0.2);
+}
+
+/* Specific width for form-group inputs */
+.form-group input,
+.form-group textarea,
+.form-group select {
+  width: 100%;
+}
+
+/* Custom Select Arrow */
+.app-editor-container select {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23FFFFFF%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.7rem top 50%;
+  background-size: 0.65rem auto;
+  padding-right: 2rem;
+}
+
+/* Radio Buttons & Checkboxes */
+.app-editor-container input[type="radio"],
+.app-editor-container input[type="checkbox"] {
+  accent-color: var(--accent-color);
+  width: auto;
+  margin-right: 0.5rem;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+/* Disabled State */
+.app-editor-container input:disabled,
+.app-editor-container select:disabled,
+.app-editor-container textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: #222;
+  border-color: #333;
 }
 
 .hint {
@@ -127,7 +171,7 @@
 }
 
 .btn-primary {
-  background-color: #4caf50;
+  background-color: var(--accent-color);
   color: #fff;
 }
 
