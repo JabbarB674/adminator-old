@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { apiUrl } from '../../utils/api';
 import DataGrid from '../../components/widgets/DataGrid';
+import BucketExplorer from '../../components/widgets/BucketExplorer';
 
 export default function GenericAppLoader() {
   const { appKey } = useParams();
@@ -13,6 +14,7 @@ export default function GenericAppLoader() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showDebug, setShowDebug] = useState(false);
+  const [activeTab, setActiveTab] = useState('dashboard'); // dashboard, bucket
   
   // Modal State
   const [activeModal, setActiveModal] = useState(null); // { type: 'db-lookup', target: 'TableName' }
@@ -105,6 +107,40 @@ export default function GenericAppLoader() {
         </button>
       </header>
 
+      {/* Tab Navigation if Bucket is present */}
+      {config.bucketSource && (
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', borderBottom: '1px solid #333' }}>
+              <button 
+                  onClick={() => setActiveTab('dashboard')}
+                  style={{ 
+                      background: 'none', 
+                      border: 'none', 
+                      padding: '0.5rem 1rem', 
+                      color: activeTab === 'dashboard' ? 'var(--accent-color)' : '#aaa',
+                      borderBottom: activeTab === 'dashboard' ? '2px solid var(--accent-color)' : '2px solid transparent',
+                      cursor: 'pointer',
+                      fontWeight: 'bold'
+                  }}
+              >
+                  Dashboard
+              </button>
+              <button 
+                  onClick={() => setActiveTab('bucket')}
+                  style={{ 
+                      background: 'none', 
+                      border: 'none', 
+                      padding: '0.5rem 1rem', 
+                      color: activeTab === 'bucket' ? 'var(--accent-color)' : '#aaa',
+                      borderBottom: activeTab === 'bucket' ? '2px solid var(--accent-color)' : '2px solid transparent',
+                      cursor: 'pointer',
+                      fontWeight: 'bold'
+                  }}
+              >
+                  Bucket Explorer
+              </button>
+          </div>
+      )}
+
       {showDebug && (
           <div style={{ background: '#111', padding: '1rem', borderRadius: '4px', marginBottom: '2rem', border: '1px solid #333', overflowX: 'auto' }}>
               <h4 style={{ marginTop: 0, color: '#888' }}>Raw Configuration</h4>
@@ -112,6 +148,9 @@ export default function GenericAppLoader() {
           </div>
       )}
 
+      {activeTab === 'bucket' ? (
+          <BucketExplorer appKey={appKey} />
+      ) : (
       <div style={{ display: 'grid', gap: '2rem' }}>
         {sections.map((section, idx) => (
           <div key={idx} style={{ background: '#1e1e1e', padding: '1.5rem', borderRadius: '8px', border: '1px solid #333', minWidth: 0 }}>
@@ -179,6 +218,11 @@ export default function GenericAppLoader() {
                         </>
                     )}
 
+                    {/* BUCKET EXPLORER WIDGET */}
+                    {widget.type === 'bucket-explorer' && (
+                        <BucketExplorer appKey={appKey} />
+                    )}
+
                     {/* UNIFIED ACTION BUTTON */}
                     {widget.type === 'action-button' && (
                         <ActionButtonWidget 
@@ -219,6 +263,7 @@ export default function GenericAppLoader() {
           </div>
         ))}
       </div>
+      )}
 
       {/* MODAL OVERLAY */}
       {activeModal && (

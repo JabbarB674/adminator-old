@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import LayoutEditor from './editors/LayoutEditor';
 import DataSourceEditor from './editors/DataSourceEditor';
+import BucketSourceEditor from './editors/BucketSourceEditor';
 import ActionEditor from './editors/ActionEditor';
 import { apiUrl } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
@@ -41,6 +42,7 @@ export default function AppEditor() {
       config: { server: '', port: 1433, database: '', user: '', password: '' },
       tables: []
     },
+    bucketSource: null,
     actions: []
   });
 
@@ -81,6 +83,7 @@ export default function AppEditor() {
             connection: json.connection || { productionUrl: '', localUrl: '', authType: 'none' },
             layout: json.layout || { type: 'dashboard-grid', sections: [] },
             dataSource: json.dataSource || { type: 'mssql', config: { server: '', port: 1433, database: '', user: '', password: '' }, tables: [] },
+            bucketSource: json.bucketSource || null,
             actions: json.actions || []
         });
         setIsEditing(true);
@@ -98,6 +101,7 @@ export default function AppEditor() {
         connection: { productionUrl: '', localUrl: '', authType: 'none' },
         layout: { type: 'dashboard-grid', sections: [] },
         dataSource: { type: 'mssql', config: { server: '', port: 1433, database: '', user: '', password: '' }, tables: [] },
+        bucketSource: null,
         actions: []
     });
     setIsEditing(false);
@@ -350,6 +354,12 @@ export default function AppEditor() {
               Data Source / DB
             </button>
             <button 
+              className={activeTab === 'bucketSource' ? 'active' : ''} 
+              onClick={() => setActiveTab('bucketSource')}
+            >
+              Bucket Storage
+            </button>
+            <button 
               className={activeTab === 'actions' ? 'active' : ''} 
               onClick={() => setActiveTab('actions')}
             >
@@ -483,6 +493,17 @@ export default function AppEditor() {
               <DataSourceEditor 
                 dataSource={config.dataSource}
                 onChange={(newDataSource) => setConfig(prev => ({ ...prev, dataSource: newDataSource }))}
+              />
+            </div>
+          )}
+
+          {activeTab === 'bucketSource' && (
+            <div className="editor-section">
+              <h2>Bucket Storage Configuration</h2>
+              <p className="hint">Configure an S3-compatible bucket for file management.</p>
+              <BucketSourceEditor 
+                bucketSource={config.bucketSource}
+                onChange={(newBucketSource) => setConfig(prev => ({ ...prev, bucketSource: newBucketSource }))}
               />
             </div>
           )}

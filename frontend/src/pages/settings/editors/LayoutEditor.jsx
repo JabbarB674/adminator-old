@@ -79,6 +79,7 @@ export default function LayoutEditor({ layout, onChange, dataSource, actions }) 
                     <option value="button">Legacy Button</option>
                     <option value="action-button">Unified Action Button</option>
                     <option value="data-grid">Data Grid (Table)</option>
+                    <option value="bucket-explorer">Bucket Explorer</option>
                   </select>
                   
                   <input
@@ -235,6 +236,16 @@ export default function LayoutEditor({ layout, onChange, dataSource, actions }) 
                                 ))}
                             </select>
                             {tables.length === 0 && <div style={{ fontSize: '0.8rem', color: '#f88', marginTop: '0.25rem' }}>No tables defined in Data Source tab.</div>}
+                        </div>
+                    )}
+
+                    {/* BUCKET EXPLORER WIDGET */}
+                    {widget.type === 'bucket-explorer' && (
+                        <div style={{ padding: '1rem', background: '#111', borderRadius: '4px', color: '#aaa', fontSize: '0.9rem' }}>
+                            <p style={{ margin: 0 }}>
+                                This widget will display the file explorer for the configured bucket. 
+                                Ensure you have configured the <strong>Bucket Storage</strong> tab.
+                            </p>
                         </div>
                     )}
 

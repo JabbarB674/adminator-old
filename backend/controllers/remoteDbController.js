@@ -3,6 +3,7 @@ const { Client } = require('pg');
 const mysql = require('mysql2/promise');
 const axios = require('axios');
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { validateAppAccess } = require('../utils/accessControl');
 
 // S3 Config (Duplicated for now, should be shared)
 const s3Client = new S3Client({
@@ -28,19 +29,6 @@ const getAppConfig = async (appKey) => {
         console.error('Error loading app config:', e);
         throw new Error('App configuration not found');
     }
-};
-
-// Helper to validate user access to app
-const validateAppAccess = (req, appKey) => {
-    // Global Admins have access to everything
-    if (req.user && req.user.isGlobalAdmin) return true;
-
-    // Check if appKey is in the user's allowed list
-    if (req.user && req.user.allowedApps && req.user.allowedApps.includes(appKey)) {
-        return true;
-    }
-
-    return false;
 };
 
 exports.testConnection = async (req, res) => {
