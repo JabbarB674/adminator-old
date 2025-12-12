@@ -1,9 +1,13 @@
 .app-editor-container {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 60px); /* Adjust based on header height */
+  /* Fit within the MainLayout's padded area without triggering outer scroll */
+  height: calc(100vh - 140px); 
   background-color: #1a1a1a;
   color: #e0e0e0;
+  border: 1px solid #333;
+  border-radius: 8px;
+  overflow: hidden; /* Ensure rounded corners clip content */
 }
 
 .editor-header {

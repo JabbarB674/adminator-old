@@ -76,7 +76,8 @@ export default function LayoutEditor({ layout, onChange, dataSource, actions }) 
                     style={{ width: '150px', fontWeight: 'bold' }}
                   >
                     <option value="markdown">Markdown Text</option>
-                    <option value="button">Action Button</option>
+                    <option value="button">Legacy Button</option>
+                    <option value="action-button">Unified Action Button</option>
                     <option value="data-grid">Data Grid (Table)</option>
                   </select>
                   
@@ -105,6 +106,44 @@ export default function LayoutEditor({ layout, onChange, dataSource, actions }) 
                                 rows={4}
                                 style={{ width: '100%', fontFamily: 'monospace' }}
                             />
+                        </div>
+                    )}
+
+                    {/* UNIFIED ACTION BUTTON WIDGET */}
+                    {widget.type === 'action-button' && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.8rem', color: '#aaa' }}>Button Label</label>
+                                <input
+                                    type="text"
+                                    value={widget.buttonText || ''}
+                                    onChange={(e) => handleUpdateWidget(sIndex, wIndex, 'buttonText', e.target.value)}
+                                    placeholder="e.g. Run Query"
+                                />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.8rem', color: '#aaa' }}>Select Action</label>
+                                <select
+                                    value={widget.actionId || ''}
+                                    onChange={(e) => handleUpdateWidget(sIndex, wIndex, 'actionId', e.target.value)}
+                                >
+                                    <option value="">-- Select Action --</option>
+                                    {availableActions.map(a => (
+                                        <option key={a.id} value={a.id}>{a.id} ({a.type})</option>
+                                    ))}
+                                </select>
+                                {availableActions.length === 0 && <div style={{ fontSize: '0.8rem', color: '#f88', marginTop: '0.25rem' }}>No actions defined. Go to 'Actions' tab to create one.</div>}
+                            </div>
+                            <div style={{ gridColumn: '1 / -1' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={widget.input || false}
+                                        onChange={(e) => handleUpdateWidget(sIndex, wIndex, 'input', e.target.checked)}
+                                    />
+                                    <span>Requires Input (Show Text Box)</span>
+                                </label>
+                            </div>
                         </div>
                     )}
 

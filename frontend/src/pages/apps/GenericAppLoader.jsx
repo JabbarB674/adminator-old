@@ -177,6 +177,15 @@ export default function GenericAppLoader() {
                         </>
                     )}
 
+                    {/* UNIFIED ACTION BUTTON */}
+                    {widget.type === 'action-button' && (
+                        <ActionButtonWidget 
+                            widget={widget} 
+                            appKey={appKey} 
+                            getActionInfo={getActionInfo} 
+                        />
+                    )}
+
                     {/* LEGACY LINK LIST */}
                     {widget.type === 'link-list' && (
                     <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
@@ -240,4 +249,115 @@ export default function GenericAppLoader() {
       )}
     </div>
   );
+}
+
+function ActionButtonWidget({ widget, appKey, getActionInfo }) {
+    const [input, setInput] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [result, setResult] = useState(null);
+    const [error, setError] = useState(null);
+
+    const action = getActionInfo(widget.actionId);
+
+    const handleRun = async () => {
+        if (!action) {
+            setError('Action definition not found');
+            return;
+        }
+
+        setLoading(true);
+        setResult(null);
+        setError(null);
+        try {
+            const token = localStorage.getItem('jwt');
+            
+            let payload = {};
+            if (input) {
+                try {
+                    payload = JSON.parse(input);
+                } catch (e) {
+                    payload = { input };
+                }
+            }
+
+            const res = await fetch(apiUrl(`/apps/${appKey}/actions/${widget.actionId}/run`), {
+                method: 'POST',
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ payload })
+            });
+            
+            let body;
+            const text = await res.text();
+            try { body = JSON.parse(text); } catch(e) { body = text; }
+
+            if (!res.ok) throw new Error(body.error || body.message || 'Action failed');
+            setResult(body);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!action) return <div style={{ color: 'red' }}>Action {widget.actionId} not found</div>;
+
+    return (
+        <div style={{ background: '#252525', padding: '1rem', borderRadius: '4px', border: '1px solid #333' }}>
+            <div style={{ display: 'flex', alignItems: 'start', gap: '1rem', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                    <h4 style={{ margin: '0 0 0.5rem 0' }}>{widget.label || action.id}</h4>
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#aaa' }}>
+                        {action.type === 'http' ? `HTTP ${action.method || 'GET'} ${action.url}` : 'SQL Query'}
+                    </p>
+                </div>
+                
+                {widget.input && (
+                    <div style={{ flex: 1, minWidth: '200px' }}>
+                        <textarea 
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            placeholder="Enter payload (JSON or text)..."
+                            style={{ 
+                                width: '100%', background: '#111', border: '1px solid #444', 
+                                color: '#ddd', padding: '0.5rem', borderRadius: '4px', minHeight: '60px',
+                                fontFamily: 'monospace', fontSize: '0.85rem'
+                            }}
+                        />
+                    </div>
+                )}
+
+                <div>
+                    <button 
+                        className="btn-primary" 
+                        onClick={handleRun} 
+                        disabled={loading}
+                        style={{ height: '100%' }}
+                    >
+                        {loading ? 'Running...' : (widget.buttonText || 'Run Action')}
+                    </button>
+                </div>
+            </div>
+
+            {error && (
+                <div style={{ marginTop: '1rem', padding: '0.5rem', background: 'rgba(255, 77, 77, 0.1)', border: '1px solid #ff4d4d', color: '#ff4d4d', borderRadius: '4px' }}>
+                    <strong>Error:</strong> {error}
+                </div>
+            )}
+
+            {result && (
+                <div style={{ marginTop: '1rem', background: '#111', padding: '0.5rem', borderRadius: '4px', border: '1px solid #333', overflowX: 'auto' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <span style={{ fontSize: '0.8rem', color: '#888' }}>Result</span>
+                        <button className="btn-small" onClick={() => setResult(null)}>Clear</button>
+                    </div>
+                    <pre style={{ margin: 0, fontSize: '0.8rem', color: '#4caf50' }}>
+                        {typeof result === 'object' ? JSON.stringify(result, null, 2) : result}
+                    </pre>
+                </div>
+            )}
+        </div>
+    );
 }

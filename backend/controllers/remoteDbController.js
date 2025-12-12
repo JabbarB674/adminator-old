@@ -1,6 +1,7 @@
 const { Connection, Request, TYPES } = require('tedious');
 const { Client } = require('pg');
 const mysql = require('mysql2/promise');
+const axios = require('axios');
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 
 // S3 Config (Duplicated for now, should be shared)
@@ -102,7 +103,98 @@ exports.updateData = async (req, res) => {
     }
 };
 
+exports.runAction = async (req, res) => {
+    const { appKey, actionId } = req.params;
+    const { payload } = req.body;
+
+    try {
+        const appConfig = await getAppConfig(appKey);
+        const action = appConfig.actions?.find(a => a.id === actionId);
+
+        if (!action) {
+            return res.status(404).json({ error: `Action '${actionId}' not found.` });
+        }
+
+        if (action.type === 'http') {
+            try {
+                const response = await axios({
+                    method: action.method || 'GET',
+                    url: action.url,
+                    headers: action.headers || {},
+                    data: payload
+                });
+                return res.json({ 
+                    success: true,
+                    status: response.status, 
+                    data: response.data 
+                });
+            } catch (httpErr) {
+                return res.status(502).json({ 
+                    error: 'Upstream Request Failed', 
+                    details: httpErr.message,
+                    response: httpErr.response?.data 
+                });
+            }
+
+        } else if (action.type === 'sql') {
+            const dataSource = appConfig.dataSource;
+            if (!dataSource) return res.status(500).json({ error: 'No data source configured.' });
+
+            if (dataSource.type === 'mssql') {
+                return runMssqlQuery(dataSource.config, action.query, payload, res);
+            } else {
+                 return res.status(501).json({ error: 'SQL Actions only supported for MSSQL currently.' });
+            }
+        } else {
+            return res.status(400).json({ error: `Unknown action type: ${action.type}` });
+        }
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
 // --- MSSQL Helpers ---
+
+const runMssqlQuery = (config, query, params, res) => {
+    const dbConfig = {
+        server: config.server,
+        authentication: { type: 'default', options: { userName: config.user, password: config.password } },
+        options: { database: config.database, port: parseInt(config.port) || 1433, encrypt: true, trustServerCertificate: true, rowCollectionOnRequestCompletion: true }
+    };
+
+    const connection = new Connection(dbConfig);
+    connection.on('connect', (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+
+        // Basic Parameter Replacement (Not secure for untrusted input, but functional for admin tools)
+        // TODO: Use proper Request parameters
+        let finalQuery = query;
+        if (params && typeof params === 'object') {
+            Object.entries(params).forEach(([key, val]) => {
+                const safeVal = typeof val === 'string' ? `'${val.replace(/'/g, "''")}'` : val;
+                finalQuery = finalQuery.replace(new RegExp(`@${key}`, 'g'), safeVal);
+            });
+        }
+
+        const request = new Request(finalQuery, (err, rowCount, rows) => {
+            connection.close();
+            if (err) return res.status(500).json({ error: err.message });
+
+            const result = [];
+            rows.forEach(row => {
+                const obj = {};
+                row.forEach(col => {
+                    obj[col.metadata.colName] = col.value;
+                });
+                result.push(obj);
+            });
+            res.json({ success: true, rows: result });
+        });
+        connection.execSql(request);
+    });
+    connection.connect();
+};
 
 const getMssqlData = (config, tableName, res) => {
     const dbConfig = {

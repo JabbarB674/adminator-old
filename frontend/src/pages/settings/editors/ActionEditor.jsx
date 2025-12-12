@@ -5,12 +5,12 @@ export default function ActionEditor({ actions, onChange }) {
 
   const handleAddAction = () => {
     const newAction = { 
-      id: 'new_action', 
-      name: 'New Action', 
-      endpoint: '/api/action',
+      id: `action_${Date.now()}`, 
+      type: 'http', 
       method: 'POST',
-      payloadTemplate: '{}',
-      inputFields: []
+      url: '',
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + Math.random().toString(36).substring(7) },
+      query: 'SELECT TOP 10 * FROM TableName'
     };
     onChange([...list, newAction]);
   };
@@ -21,29 +21,30 @@ export default function ActionEditor({ actions, onChange }) {
     onChange(newList);
   };
 
+  const handleUpdateHeader = (index, headerKey, headerValue) => {
+      const newList = [...list];
+      const headers = { ...newList[index].headers, [headerKey]: headerValue };
+      newList[index] = { ...newList[index], headers };
+      onChange(newList);
+  };
+
+  const handleDeleteHeader = (index, headerKey) => {
+      const newList = [...list];
+      const headers = { ...newList[index].headers };
+      delete headers[headerKey];
+      newList[index] = { ...newList[index], headers };
+      onChange(newList);
+  };
+
+  const handleAddHeader = (index) => {
+      const newList = [...list];
+      const headers = { ...newList[index].headers, "New-Header": "Value" };
+      newList[index] = { ...newList[index], headers };
+      onChange(newList);
+  };
+
   const handleDeleteAction = (index) => {
     const newList = list.filter((_, i) => i !== index);
-    onChange(newList);
-  };
-
-  const handleAddInputField = (actionIndex) => {
-    const newList = [...list];
-    const fields = newList[actionIndex].inputFields || [];
-    newList[actionIndex].inputFields = [...fields, { name: 'new_field', label: 'New Field', type: 'text', defaultValue: '' }];
-    onChange(newList);
-  };
-
-  const handleUpdateInputField = (actionIndex, fieldIndex, key, value) => {
-    const newList = [...list];
-    const fields = [...newList[actionIndex].inputFields];
-    fields[fieldIndex] = { ...fields[fieldIndex], [key]: value };
-    newList[actionIndex].inputFields = fields;
-    onChange(newList);
-  };
-
-  const handleDeleteInputField = (actionIndex, fieldIndex) => {
-    const newList = [...list];
-    newList[actionIndex].inputFields = newList[actionIndex].inputFields.filter((_, i) => i !== fieldIndex);
     onChange(newList);
   };
 
@@ -56,101 +57,128 @@ export default function ActionEditor({ actions, onChange }) {
 
       {list.map((action, aIndex) => (
         <div key={aIndex} style={{ background: '#252525', padding: '1rem', marginBottom: '1rem', borderRadius: '4px', border: '1px solid #333' }}>
-          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-            <div style={{ flex: 1 }}>
-                <label style={{fontSize: '0.8rem', color: '#888'}}>Action Name</label>
+          
+          {/* Header Row */}
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', alignItems: 'center' }}>
+            <div style={{ width: '200px' }}>
+                <label style={{fontSize: '0.8rem', color: '#888', display: 'block'}}>Action ID</label>
                 <input
-                type="text"
-                value={action.name}
-                onChange={(e) => handleUpdateAction(aIndex, 'name', e.target.value)}
+                    type="text"
+                    value={action.id}
+                    onChange={(e) => handleUpdateAction(aIndex, 'id', e.target.value)}
+                    style={{ width: '100%', fontWeight: 'bold' }}
                 />
             </div>
-            <div style={{ flex: 2 }}>
-                <label style={{fontSize: '0.8rem', color: '#888'}}>Endpoint URL</label>
-                <input
-                type="text"
-                value={action.endpoint}
-                onChange={(e) => handleUpdateAction(aIndex, 'endpoint', e.target.value)}
-                />
-            </div>
-            <div style={{ width: '100px' }}>
-                <label style={{fontSize: '0.8rem', color: '#888'}}>Method</label>
+            <div style={{ width: '150px' }}>
+                <label style={{fontSize: '0.8rem', color: '#888', display: 'block'}}>Type</label>
                 <select
-                    value={action.method}
-                    onChange={(e) => handleUpdateAction(aIndex, 'method', e.target.value)}
+                    value={action.type || 'http'}
+                    onChange={(e) => handleUpdateAction(aIndex, 'type', e.target.value)}
+                    style={{ width: '100%' }}
                 >
-                    <option value="GET">GET</option>
-                    <option value="POST">POST</option>
-                    <option value="PUT">PUT</option>
-                    <option value="DELETE">DELETE</option>
+                    <option value="http">HTTP Request</option>
+                    <option value="sql">SQL Query</option>
                 </select>
             </div>
-            <button className="btn-secondary" onClick={() => handleDeleteAction(aIndex)} style={{ marginTop: '1.2rem', color: '#ff4d4d', borderColor: '#ff4d4d', height: '40px' }}>Delete</button>
-          </div>
-
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={{fontSize: '0.8rem', color: '#888'}}>Payload Template (JSON)</label>
-            <textarea
-                value={action.payloadTemplate}
-                onChange={(e) => handleUpdateAction(aIndex, 'payloadTemplate', e.target.value)}
-                rows={3}
-                style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.9rem' }}
-                placeholder='{ "userId": "{{userId}}", "amount": {{amount}} }'
-            />
-            <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>Use <code>{`{{fieldName}}`}</code> syntax for dynamic values from input fields below.</p>
-          </div>
-
-          <div style={{ paddingLeft: '1rem', borderLeft: '2px solid #2196f3' }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', color: '#888' }}>Input Fields (User Configurable)</h4>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 40px', gap: '0.5rem', marginBottom: '0.5rem', fontSize: '0.8rem', color: '#666' }}>
-                <span>Field Name (ID)</span>
-                <span>Label</span>
-                <span>Type</span>
-                <span>Default Value</span>
-                <span></span>
+            <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-end' }}>
+                <button className="btn-secondary" onClick={() => handleDeleteAction(aIndex)} style={{ color: '#ff4d4d', borderColor: '#ff4d4d' }}>Delete</button>
             </div>
+          </div>
 
-            {action.inputFields?.map((field, fIndex) => (
-              <div key={fIndex} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 40px', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <input
-                    type="text"
-                    value={field.name}
-                    onChange={(e) => handleUpdateInputField(aIndex, fIndex, 'name', e.target.value)}
-                    placeholder="userId"
-                />
-                <input
-                    type="text"
-                    value={field.label}
-                    onChange={(e) => handleUpdateInputField(aIndex, fIndex, 'label', e.target.value)}
-                    placeholder="User ID"
-                />
-                <select
-                    value={field.type}
-                    onChange={(e) => handleUpdateInputField(aIndex, fIndex, 'type', e.target.value)}
-                >
-                    <option value="text">Text</option>
-                    <option value="number">Number</option>
-                    <option value="boolean">Boolean</option>
-                    <option value="date">Date</option>
-                </select>
-                <input
-                    type="text"
-                    value={field.defaultValue}
-                    onChange={(e) => handleUpdateInputField(aIndex, fIndex, 'defaultValue', e.target.value)}
-                    placeholder="Optional"
-                />
-                <button className="btn-small" onClick={() => handleDeleteInputField(aIndex, fIndex)}>×</button>
+          {/* HTTP Configuration */}
+          {action.type === 'http' && (
+              <div style={{ background: '#222', padding: '1rem', borderRadius: '4px' }}>
+                  <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                    <div style={{ width: '100px' }}>
+                        <label style={{fontSize: '0.8rem', color: '#888'}}>Method</label>
+                        <select
+                            value={action.method}
+                            onChange={(e) => handleUpdateAction(aIndex, 'method', e.target.value)}
+                            style={{ width: '100%' }}
+                        >
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="PUT">PUT</option>
+                            <option value="DELETE">DELETE</option>
+                            <option value="PATCH">PATCH</option>
+                        </select>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                        <label style={{fontSize: '0.8rem', color: '#888'}}>URL</label>
+                        <input
+                            type="text"
+                            value={action.url || ''}
+                            onChange={(e) => handleUpdateAction(aIndex, 'url', e.target.value)}
+                            placeholder="https://api.example.com/v1/resource"
+                            style={{ width: '100%' }}
+                        />
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '1rem', background: '#1a1a1a', padding: '1rem', borderRadius: '4px', border: '1px solid #333' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <label style={{fontSize: '0.8rem', color: '#aaa', fontWeight: 'bold'}}>HTTP Headers</label>
+                        <button className="btn-small" onClick={() => handleAddHeader(aIndex)} style={{ fontSize: '0.7rem', padding: '2px 8px' }}>+ Add Header</button>
+                      </div>
+                      
+                      {(!action.headers || Object.keys(action.headers).length === 0) && (
+                          <div style={{ fontSize: '0.8rem', color: '#666', fontStyle: 'italic' }}>No custom headers configured.</div>
+                      )}
+
+                      {action.headers && Object.entries(action.headers).map(([key, val], hIdx) => (
+                          <div key={hIdx} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                              <input 
+                                type="text" 
+                                value={key} 
+                                onChange={(e) => {
+                                    const newHeaders = { ...action.headers };
+                                    const val = newHeaders[key];
+                                    delete newHeaders[key];
+                                    newHeaders[e.target.value] = val;
+                                    handleUpdateAction(aIndex, 'headers', newHeaders);
+                                }}
+                                placeholder="Header Key"
+                                style={{ flex: 1, background: '#2a2a2a', border: '1px solid #444', color: '#fff', padding: '0.5rem' }}
+                              />
+                              <span style={{ color: '#666' }}>:</span>
+                              <input 
+                                type="text" 
+                                value={val} 
+                                onChange={(e) => handleUpdateHeader(aIndex, key, e.target.value)}
+                                placeholder="Header Value"
+                                style={{ flex: 2, background: '#2a2a2a', border: '1px solid #444', color: '#a5d6a7', padding: '0.5rem' }}
+                              />
+                              <button 
+                                className="btn-small" 
+                                onClick={() => handleDeleteHeader(aIndex, key)}
+                                style={{ color: '#ff4d4d', border: '1px solid #ff4d4d', padding: '0.25rem 0.5rem', marginLeft: '0.5rem' }}
+                                title="Remove Header"
+                              >×</button>
+                          </div>
+                      ))}
+                  </div>
               </div>
-            ))}
-            <button className="btn-small" onClick={() => handleAddInputField(aIndex)} style={{ marginTop: '0.5rem' }}>+ Add Input Field</button>
-          </div>
+          )}
+
+          {/* SQL Configuration */}
+          {action.type === 'sql' && (
+              <div style={{ background: '#222', padding: '1rem', borderRadius: '4px' }}>
+                  <label style={{fontSize: '0.8rem', color: '#888', display: 'block', marginBottom: '0.5rem'}}>SQL Query</label>
+                  <textarea
+                      value={action.query || ''}
+                      onChange={(e) => handleUpdateAction(aIndex, 'query', e.target.value)}
+                      rows={5}
+                      style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.9rem', background: '#111', color: '#dcdcaa' }}
+                      placeholder="SELECT * FROM Users WHERE id = @input"
+                  />
+                  <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
+                      Use <code>@input</code> to reference the payload sent from the UI.
+                  </p>
+              </div>
+          )}
+
         </div>
       ))}
-
-      {list.length === 0 && (
-        <div className="empty-state">No actions defined. Add one to create configurable buttons.</div>
-      )}
     </div>
   );
 }
