@@ -1,90 +1,131 @@
-# Adminator
+# Adminator - Internal Tool Builder
 
-Adminator is a comprehensive internal administration dashboard designed to manage users, permissions, and various internal tools and applications. It features a React frontend and a Node.js/Express backend with SQL Server integration.
+Adminator is a low-code platform designed to rapidly build and deploy internal tools, dashboards, and admin panels. It allows you to connect to various data sources (MSSQL, Postgres, MySQL, APIs), define user interfaces via JSON configuration, and manage user access with granular permissions.
 
-## Project Structure
+## 🚀 Key Features
 
-```
-adminator/
-├── backend/                # Node.js Express API
-│   ├── config/             # Database configuration
-│   ├── controllers/        # Request handlers
-│   ├── middleware/         # Auth and other middleware
-│   ├── routes/             # API route definitions
-│   └── apps/               # Backend logic for specific integrated apps
-├── frontend/               # React SPA (Create React App)
-│   ├── src/
-│   │   ├── components/     # Reusable UI components
-│   │   ├── context/        # React Context (Auth, etc.)
-│   │   ├── layouts/        # Page layouts (Main, Sidebar)
-│   │   ├── pages/          # Route pages
-│   │   └── services/       # API service calls
-└── database/               # SQL scripts for setup and migration
-```
+*   **Dynamic App Engine**: Apps are defined entirely by JSON configurations stored in S3. No code changes required to create new tools.
+*   **Visual App Editor**: A built-in GUI (`/settings/app-editor`) to create and modify apps without writing JSON manually.
+*   **Universal Data Grid**: A powerful table widget that supports:
+    *   Connecting to remote MSSQL, Postgres, and MySQL databases.
+    *   Inline editing with transaction support.
+    *   Automatic schema detection.
+*   **Unified Action System**: Define "Actions" that can be triggered via buttons:
+    *   **HTTP Actions**: Call external APIs (REST/JSON).
+    *   **SQL Actions**: Execute raw SQL queries against connected databases.
+    *   **Input Forms**: Define required inputs (text, number, date) that users must fill before execution.
+*   **Role-Based Access Control (RBAC)**:
+    *   Users are assigned to Access Profiles (e.g., Administrator, Viewer).
+    *   Profiles are granted access to specific Apps.
+    *   Custom per-user overrides available.
+*   **Serverless Integration**: Capable of invoking AWS Lambda functions for complex business logic.
 
-## Features
+## 🏗 Architecture
 
-- **Authentication**: JWT-based authentication with secure login.
-- **User Management**: 
-  - CRUD operations for users.
-  - Role-based access control (Global Admin vs Standard User).
-- **Granular Permissions**:
-  - "Custom Profile" system allowing specific app access overrides per user without creating new database roles.
-- **App Integration**:
-  - Dynamic app loading.
-  - "Tasty Customers" app integration.
-- **Tools**:
-  - DB Lookup tool.
-  - S3/MinIO Bucket Explorer.
-  - cURL tool.
+### Frontend (`/frontend`)
+*   **Framework**: React 19
+*   **Routing**: `react-router-dom` (Dynamic routing for `/apps/:appKey`)
+*   **State Management**: Context API (`AuthContext`, `NotificationContext`)
+*   **Styling**: CSS Modules + Global Dark Theme (Red Accent)
+*   **Key Components**:
+    *   `GenericAppLoader`: The core engine that fetches JSON config and renders the app.
+    *   `AppEditor`: The visual builder for app configs.
+    *   `DataGrid`: The smart table component for database interaction.
+    *   `ActionButtonWidget`: The runtime component for executing configured actions.
 
-## Getting Started
+### Backend (`/backend`)
+*   **Framework**: Node.js + Express
+*   **Storage**:
+    *   **App Configs**: Stored as JSON in S3 (or MinIO for local dev).
+    *   **System Data**: Stored in a local SQL Server (Users, Permissions, App Registry).
+*   **Database Drivers**: `tedious` (MSSQL), `pg` (Postgres), `mysql2` (MySQL).
+*   **Controllers**:
+    *   `appController`: Manages App metadata and S3 config storage.
+    *   `remoteDbController`: Proxies requests to remote databases (Test Connection, Get Data, Update Data, Run SQL Actions).
+    *   `userController`: Manages system users and permissions.
+
+### Database (`/database`)
+*   Contains SQL scripts for setting up the **System Database** (Adminator's own DB).
+*   Handles User tables, RBAC tables (`Adminator_AccessProfiles`, `Adminator_ProfileAppAccess`), and App Registry (`Adminator_Apps`).
+
+## 🛠 Setup & Installation
 
 ### Prerequisites
+*   Node.js (v18+)
+*   SQL Server (for the System Database)
+*   MinIO or AWS S3 access (for Config Storage)
 
-- Node.js (v14+)
-- SQL Server
-- MinIO (Optional, for file storage features)
+### 1. Backend Setup
+```bash
+cd backend
+npm install
+# Configure .env (see .env.sample)
+# Ensure DATABASE_URL points to your System SQL Server
+# Ensure S3 credentials are set
+npm start
+```
 
-### Backend Setup
+### 2. Frontend Setup
+```bash
+cd frontend
+npm install
+npm start
+```
 
-1. Navigate to the backend directory:
-   ```bash
-   cd backend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Configure environment variables:
-   - Copy `.env.sample` to `.env`.
-   - Update the values with your database and JWT credentials.
-4. Start the server:
-   ```bash
-   npm start
-   ```
+### 3. Database Setup
+Run the scripts in `database/` in order against your System SQL Server to create the necessary tables and seed initial data.
 
-### Frontend Setup
+## 📘 App Configuration Guide
 
-1. Navigate to the frontend directory:
-   ```bash
-   cd frontend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Start the development server:
-   ```bash
-   npm start
-   ```
-   The app will run at `http://localhost:3000`.
+Apps are defined in JSON. Example structure:
 
-## Database Setup
+```json
+{
+  "meta": {
+    "displayName": "Customer Support",
+    "appKey": "customer-support",
+    "icon": "users"
+  },
+  "connection": {
+    "productionUrl": "https://api.example.com"
+  },
+  "dataSource": {
+    "type": "mssql",
+    "config": { "server": "...", "database": "..." },
+    "tables": [
+      { "name": "Customers", "allowEdit": true, "primaryKey": "CustomerId" }
+    ]
+  },
+  "actions": [
+    {
+      "id": "reset-password",
+      "name": "Reset Password",
+      "type": "http",
+      "method": "POST",
+      "url": "/api/reset",
+      "inputs": [{ "name": "email", "label": "User Email" }]
+    }
+  ],
+  "layout": {
+    "sections": [
+      {
+        "title": "Overview",
+        "widgets": [
+          { "type": "data-grid", "target": "Customers" },
+          { "type": "action-button", "actionId": "reset-password" }
+        ]
+      }
+    ]
+  }
+}
+```
 
-Run the SQL scripts in the `database/` folder in order to set up the required tables and initial data.
+## 🎨 UI & Styling
+The project uses a dark theme with a **Red** accent color (`var(--accent-color)`).
+*   **Global Styles**: `frontend/src/index.css`
+*   **Variables**: `frontend/src/styles/variables.css`
+*   **Notifications**: A custom Toast system (`NotificationContext`) replaces native alerts.
 
-## Architecture Notes
-
-- **Permissions**: The system uses a hybrid RBAC model. Users belong to a `Profile`. If a user needs specific permissions different from their profile, the system generates a unique `Custom_User_{ID}` profile for them in the background.
-- **Frontend Styling**: Uses standard CSS with a focus on a dark/modern aesthetic.
+## 🤝 Contributing
+1.  **New Widgets**: Add to `frontend/src/components/widgets/` and register in `GenericAppLoader` and `LayoutEditor`.
+2.  **New DB Support**: Add driver to `backend/package.json` and implement logic in `backend/controllers/remoteDbController.js`.
