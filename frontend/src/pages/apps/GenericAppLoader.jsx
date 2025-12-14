@@ -265,8 +265,22 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
     const [error, setError] = useState(null);
+    const [selectedFile, setSelectedFile] = useState(null); // { type: 'local'|'minio', file: File|string }
+    const [showBucketModal, setShowBucketModal] = useState(false);
+    const fileInputRef = React.useRef(null);
 
     const action = getActionInfo(widget.actionId);
+
+    const handleFileSelect = (e) => {
+        if (e.target.files[0]) {
+            setSelectedFile({ type: 'local', file: e.target.files[0] });
+        }
+    };
+
+    const handleMinioSelect = (path) => {
+        setSelectedFile({ type: 'minio', path: path });
+        setShowBucketModal(false);
+    };
 
     const handleRun = async () => {
         if (!action) {
@@ -279,14 +293,45 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
         setError(null);
         try {
             const token = localStorage.getItem('jwt');
+            let filePath = null;
+
+            // 1. Handle File Upload if needed
+            if (selectedFile) {
+                if (selectedFile.type === 'local') {
+                    // Upload to Local Minio (Adminator Storage)
+                    const formData = new FormData();
+                    formData.append('file', selectedFile.file);
+                    formData.append('path', `apps/${appKey}/uploads/`); // App-specific folder in local storage
+                    
+                    const uploadRes = await fetch(apiUrl('/upload'), {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: formData
+                    });
+                    
+                    if (!uploadRes.ok) throw new Error('Failed to upload local file');
+                    const uploadData = await uploadRes.json();
+                    filePath = uploadData.key || uploadData.path; 
+                } else {
+                    filePath = selectedFile.path;
+                }
+            }
             
             let payload = {};
             if (input) {
                 try {
-                    payload = JSON.parse(input);
+                    // Replace {{filePath}} placeholder if present
+                    let processedInput = input;
+                    if (filePath) {
+                        processedInput = processedInput.replace('{{filePath}}', filePath);
+                    }
+                    payload = JSON.parse(processedInput);
                 } catch (e) {
-                    payload = { input };
+                    payload = { input: input.replace('{{filePath}}', filePath || '') };
                 }
+            } else if (filePath) {
+                // If no input but file exists, maybe just send it as filePath
+                payload = { filePath };
             }
 
             const res = await fetch(apiUrl(`/apps/${appKey}/actions/${widget.actionId}/run`), {
@@ -321,34 +366,96 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
                     <p style={{ margin: 0, fontSize: '0.8rem', color: '#aaa' }}>
                         {action.type === 'http' ? `HTTP ${action.method || 'GET'} ${action.url}` : 'SQL Query'}
                     </p>
+                    {action.description && (
+                        <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: '#333', borderRadius: '4px', fontSize: '0.85rem', color: '#ddd', whiteSpace: 'pre-wrap' }}>
+                            {action.description}
+                        </div>
+                    )}
                 </div>
                 
-                {widget.input && (
-                    <div style={{ flex: 1, minWidth: '200px' }}>
-                        <textarea 
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            placeholder="Enter payload (JSON or text)..."
-                            style={{ 
-                                width: '100%', background: '#111', border: '1px solid #444', 
-                                color: '#ddd', padding: '0.5rem', borderRadius: '4px', minHeight: '60px',
-                                fontFamily: 'monospace', fontSize: '0.85rem'
-                            }}
-                        />
-                    </div>
-                )}
+                <div style={{ flex: 1, minWidth: '300px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {action.allowFile && (
+                        <div style={{ background: '#1a1a1a', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444' }}>
+                            <label style={{ display: 'block', fontSize: '0.8rem', color: '#888', marginBottom: '0.5rem' }}>Attachment (File)</label>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                <input 
+                                    type="file" 
+                                    ref={fileInputRef}
+                                    style={{ display: 'none' }}
+                                    onChange={handleFileSelect}
+                                />
+                                <button className="btn-secondary" onClick={() => fileInputRef.current.click()}>
+                                    Local File
+                                </button>
+                                <button className="btn-secondary" onClick={() => setShowBucketModal(true)}>
+                                    From Minio
+                                </button>
+                                {selectedFile && (
+                                    <span style={{ fontSize: '0.8rem', color: '#4caf50', marginLeft: '0.5rem' }}>
+                                        {selectedFile.type === 'local' ? `📄 ${selectedFile.file.name}` : `☁️ ${selectedFile.path}`}
+                                        <button 
+                                            onClick={() => setSelectedFile(null)}
+                                            style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', marginLeft: '0.5rem' }}
+                                        >×</button>
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {widget.input && (
+                        <div>
+                            <label style={{ display: 'block', fontSize: '0.8rem', color: '#888', marginBottom: '0.5rem' }}>Payload (JSON)</label>
+                            <textarea 
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                placeholder={`Enter payload... ${action.allowFile ? 'Use {{filePath}} for the file location.' : ''}`}
+                                style={{ 
+                                    width: '100%', background: '#111', border: '1px solid #444', 
+                                    color: '#ddd', padding: '0.5rem', borderRadius: '4px', minHeight: '80px',
+                                    fontFamily: 'monospace', fontSize: '0.85rem'
+                                }}
+                            />
+                        </div>
+                    )}
+                </div>
 
                 <div>
                     <button 
                         className="btn-primary" 
                         onClick={handleRun} 
                         disabled={loading}
-                        style={{ height: '100%' }}
+                        style={{ height: '100%', minHeight: '40px' }}
                     >
                         {loading ? 'Running...' : (widget.buttonText || 'Run Action')}
                     </button>
                 </div>
             </div>
+
+            {/* BUCKET SELECTION MODAL */}
+            {showBucketModal && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.8)', zIndex: 2000,
+                    display: 'flex', justifyContent: 'center', alignItems: 'center'
+                }}>
+                    <div style={{
+                        background: '#1e1e1e', width: '80%', maxWidth: '800px', height: '70vh',
+                        borderRadius: '8px', border: '1px solid #444', display: 'flex', flexDirection: 'column'
+                    }}>
+                        <div style={{ padding: '1rem', borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ margin: 0 }}>Select File from Bucket</h3>
+                            <button className="btn-small" onClick={() => setShowBucketModal(false)}>Close</button>
+                        </div>
+                        <div style={{ flex: 1, overflow: 'auto', padding: '1rem' }}>
+                            <BucketExplorer 
+                                appKey={appKey} 
+                                onSelect={(file) => handleMinioSelect(file.key || file.name)} 
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {error && (
                 <div style={{ marginTop: '1rem', padding: '0.5rem', background: 'rgba(255, 77, 77, 0.1)', border: '1px solid #ff4d4d', color: '#ff4d4d', borderRadius: '4px' }}>
@@ -357,12 +464,12 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
             )}
 
             {result && (
-                <div style={{ marginTop: '1rem', background: '#111', padding: '0.5rem', borderRadius: '4px', border: '1px solid #333', overflowX: 'auto' }}>
+                <div style={{ marginTop: '1rem', background: '#111', padding: '0.5rem', borderRadius: '4px', border: '1px solid #333' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                         <span style={{ fontSize: '0.8rem', color: '#888' }}>Result</span>
                         <button className="btn-small" onClick={() => setResult(null)}>Clear</button>
                     </div>
-                    <pre style={{ margin: 0, fontSize: '0.8rem', color: '#4caf50' }}>
+                    <pre style={{ margin: 0, fontSize: '0.8rem', color: '#4caf50', maxHeight: '400px', overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
                         {typeof result === 'object' ? JSON.stringify(result, null, 2) : result}
                     </pre>
                 </div>

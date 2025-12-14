@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { apiUrl } from '../../utils/api';
 import { useNotification } from '../../context/NotificationContext';
 
-export default function BucketExplorer({ appKey }) {
+export default function BucketExplorer({ appKey, onSelect }) {
     const { showNotification } = useNotification();
     const [items, setItems] = useState([]);
     const [currentPrefix, setCurrentPrefix] = useState('');
@@ -191,7 +191,18 @@ export default function BucketExplorer({ appKey }) {
                                             📁 {item.name.split('/').filter(p=>p).pop()}/
                                         </span>
                                     ) : (
-                                        <span>📄 {item.name.split('/').pop()}</span>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                            <span>📄 {item.name.split('/').pop()}</span>
+                                            {onSelect && (
+                                                <button 
+                                                    className="btn-small" 
+                                                    onClick={() => onSelect(item)}
+                                                    style={{ fontSize: '0.7rem', padding: '2px 6px' }}
+                                                >
+                                                    Select
+                                                </button>
+                                            )}
+                                        </span>
                                     )}
                                 </td>
                                 <td style={{ padding: '0.5rem', color: '#aaa' }}>

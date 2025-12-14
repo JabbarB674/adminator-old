@@ -88,6 +88,16 @@ export default function ActionEditor({ actions, onChange }) {
           {/* HTTP Configuration */}
           {action.type === 'http' && (
               <div style={{ background: '#222', padding: '1rem', borderRadius: '4px' }}>
+                  <div style={{ marginBottom: '1rem' }}>
+                      <label style={{fontSize: '0.8rem', color: '#888'}}>Description / Guide</label>
+                      <textarea
+                          value={action.description || ''}
+                          onChange={(e) => handleUpdateAction(aIndex, 'description', e.target.value)}
+                          placeholder="Explain how to use this action..."
+                          style={{ width: '100%', minHeight: '60px', background: '#1a1a1a', border: '1px solid #444', color: '#ddd', padding: '0.5rem', borderRadius: '4px' }}
+                      />
+                  </div>
+
                   <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
                     <div style={{ width: '100px' }}>
                         <label style={{fontSize: '0.8rem', color: '#888'}}>Method</label>
@@ -113,6 +123,23 @@ export default function ActionEditor({ actions, onChange }) {
                             style={{ width: '100%' }}
                         />
                     </div>
+                  </div>
+
+                  <div style={{ marginBottom: '1rem', background: '#1a1a1a', padding: '1rem', borderRadius: '4px', border: '1px solid #333' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                          <input 
+                            type="checkbox" 
+                            id={`allowFile-${aIndex}`}
+                            checked={action.allowFile || false}
+                            onChange={(e) => handleUpdateAction(aIndex, 'allowFile', e.target.checked)}
+                          />
+                          <label htmlFor={`allowFile-${aIndex}`} style={{ color: '#ddd', cursor: 'pointer' }}>Allow File Attachment (Upload to Minio)</label>
+                      </div>
+                      {action.allowFile && (
+                          <div style={{ fontSize: '0.8rem', color: '#888', marginLeft: '1.5rem' }}>
+                              When enabled, users can select a file (Local or Minio). The file path will be available as <code>{`{{filePath}}`}</code> in your payload.
+                          </div>
+                      )}
                   </div>
 
                   <div style={{ marginBottom: '1rem', background: '#1a1a1a', padding: '1rem', borderRadius: '4px', border: '1px solid #333' }}>
