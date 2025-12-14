@@ -143,11 +143,31 @@ exports.runAction = async (req, res) => {
 
         if (action.type === 'http') {
             console.log(`[RemoteDB] Executing HTTP action: ${action.method} ${action.url}`);
+            
+            // Handle File Attachment (Inject Base64)
+            if (payload && payload.filePath) {
+                try {
+                    console.log(`[RemoteDB] Fetching file from storage: ${payload.filePath}`);
+                    const fileCommand = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: payload.filePath });
+                    const fileResponse = await s3Client.send(fileCommand);
+                    const fileBuffer = await fileResponse.Body.transformToByteArray();
+                    const base64File = Buffer.from(fileBuffer).toString('base64');
+                    
+                    // Inject into payload
+                    payload.fileBase64 = base64File;
+                    payload.fileName = payload.filePath.split('/').pop();
+                    // We keep filePath for reference, but the Lambda should use fileBase64
+                } catch (fileErr) {
+                    console.error(`[RemoteDB] Failed to fetch file attachment: ${fileErr.message}`);
+                    // We continue, but the Lambda might fail if it expects the file
+                }
+            }
+
             try {
                 const response = await axios({
                     method: action.method || 'GET',
                     url: action.url,
-                    headers: action.headers || {},
+                    headers: { ...(action.headers || {}), ...(req.body.dynamicHeaders || {}) },
                     data: payload
                 });
                 console.log(`[RemoteDB] HTTP action success: ${response.status}`);

@@ -294,8 +294,42 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
         try {
             const token = localStorage.getItem('jwt');
             let filePath = null;
+            let dynamicHeaders = {};
 
-            // 1. Handle File Upload if needed
+            // 1. Dynamic Authentication
+            if (action.authType === 'dynamic' && action.authUrl) {
+                try {
+                    const authRes = await fetch(action.authUrl, {
+                        method: action.authMethod || 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: (action.authMethod !== 'GET' && action.authBody) ? action.authBody : undefined
+                    });
+                    
+                    const authText = await authRes.text();
+                    let authJson;
+                    try { authJson = JSON.parse(authText); } catch(e) { authJson = authText; }
+
+                    if (!authRes.ok) throw new Error('Auth request failed: ' + (authJson.error || authJson.message || authRes.statusText));
+
+                    // Resolve token
+                    let authToken = authJson;
+                    if (action.tokenPath) {
+                        const parts = action.tokenPath.split(/[.>]/);
+                        for (const part of parts) {
+                            if (authToken && typeof authToken === 'object') {
+                                authToken = authToken[part.trim()];
+                            }
+                        }
+                    }
+                    
+                    const finalToken = (action.tokenPrefix || '') + (typeof authToken === 'string' ? authToken : JSON.stringify(authToken));
+                    dynamicHeaders['Authorization'] = finalToken;
+                } catch (authErr) {
+                    throw new Error(`Authentication Failed: ${authErr.message}`);
+                }
+            }
+
+            // 2. Handle File Upload if needed
             if (selectedFile) {
                 if (selectedFile.type === 'local') {
                     // Upload to Local Minio (Adminator Storage)
@@ -340,7 +374,7 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ payload })
+                body: JSON.stringify({ payload, dynamicHeaders })
             });
             
             let body;
@@ -388,7 +422,7 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
                                     Local File
                                 </button>
                                 <button className="btn-secondary" onClick={() => setShowBucketModal(true)}>
-                                    From Minio
+                                    From External Bucket
                                 </button>
                                 {selectedFile && (
                                     <span style={{ fontSize: '0.8rem', color: '#4caf50', marginLeft: '0.5rem' }}>

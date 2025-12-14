@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 export default function ActionEditor({ actions, onChange }) {
   const list = actions || [];
+  const [testResult, setTestResult] = useState(null);
 
   const handleAddAction = () => {
     const newAction = { 
@@ -48,12 +49,85 @@ export default function ActionEditor({ actions, onChange }) {
     onChange(newList);
   };
 
+  const handleTestAuth = async (action) => {
+      setTestResult({ loading: true });
+      try {
+          if (!action.authUrl) throw new Error('Auth URL is required');
+          
+          const res = await fetch(action.authUrl, {
+              method: action.authMethod || 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: (action.authMethod !== 'GET' && action.authBody) ? action.authBody : undefined
+          });
+          
+          const text = await res.text();
+          let json;
+          try { json = JSON.parse(text); } catch(e) { json = text; }
+
+          if (!res.ok) throw new Error(json.error || json.message || 'Auth request failed');
+
+          // Resolve token
+          let token = json;
+          if (action.tokenPath) {
+              const parts = action.tokenPath.split(/[.>]/); // Support dot or > notation
+              for (const part of parts) {
+                  if (token && typeof token === 'object') {
+                      token = token[part.trim()];
+                  }
+              }
+          }
+          
+          const finalHeader = (action.tokenPrefix || '') + (typeof token === 'string' ? token : JSON.stringify(token));
+          setTestResult({ success: true, token: finalHeader, raw: json });
+      } catch (e) {
+          setTestResult({ success: false, error: e.message });
+      }
+  };
+
   return (
     <div className="action-editor">
       <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3>Configurable Actions</h3>
         <button className="btn-small" onClick={handleAddAction}>+ Add Action</button>
       </div>
+
+      {testResult && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ background: '#1e1e1e', padding: '2rem', borderRadius: '8px', maxWidth: '600px', width: '90%', border: '1px solid #444' }}>
+                  <h3 style={{ marginTop: 0 }}>Auth Test Result</h3>
+                  {testResult.loading ? (
+                      <div>Testing Authentication...</div>
+                  ) : (
+                      <>
+                        {testResult.success ? (
+                            <div style={{ color: '#4caf50', marginBottom: '1rem' }}>
+                                <strong>✓ Success!</strong><br/>
+                                <div style={{ marginTop: '0.5rem', color: '#ddd' }}>Resolved Header Value:</div>
+                                <code style={{ display: 'block', background: '#111', padding: '0.5rem', marginTop: '0.25rem', wordBreak: 'break-all' }}>
+                                    {testResult.token}
+                                </code>
+                            </div>
+                        ) : (
+                            <div style={{ color: '#ff4d4d', marginBottom: '1rem' }}>
+                                <strong>✗ Failed:</strong> {testResult.error}
+                            </div>
+                        )}
+                        
+                        {testResult.raw && (
+                            <div style={{ marginTop: '1rem' }}>
+                                <div style={{ fontSize: '0.8rem', color: '#888' }}>Raw Response:</div>
+                                <pre style={{ background: '#111', padding: '0.5rem', fontSize: '0.75rem', maxHeight: '200px', overflow: 'auto' }}>
+                                    {JSON.stringify(testResult.raw, null, 2)}
+                                </pre>
+                            </div>
+                        )}
+                        
+                        <button className="btn-primary" onClick={() => setTestResult(null)} style={{ marginTop: '1rem', width: '100%' }}>Close</button>
+                      </>
+                  )}
+              </div>
+          </div>
+      )}
 
       {list.map((action, aIndex) => (
         <div key={aIndex} style={{ background: '#252525', padding: '1rem', marginBottom: '1rem', borderRadius: '4px', border: '1px solid #333' }}>
@@ -123,6 +197,91 @@ export default function ActionEditor({ actions, onChange }) {
                             style={{ width: '100%' }}
                         />
                     </div>
+                  </div>
+
+                  <div style={{ marginBottom: '1rem', background: '#1a1a1a', padding: '1rem', borderRadius: '4px', border: '1px solid #333' }}>
+                      <label style={{fontSize: '0.8rem', color: '#aaa', fontWeight: 'bold', marginBottom: '0.5rem', display: 'block'}}>Authentication</label>
+                      
+                      <div style={{ marginBottom: '1rem' }}>
+                          <label style={{fontSize: '0.8rem', color: '#888'}}>Auth Type</label>
+                          <select
+                              value={action.authType || 'none'}
+                              onChange={(e) => handleUpdateAction(aIndex, 'authType', e.target.value)}
+                              style={{ width: '100%', background: '#2a2a2a', color: '#fff', border: '1px solid #444', padding: '0.5rem' }}
+                          >
+                              <option value="none">None / Static Headers</option>
+                              <option value="dynamic">Dynamic Token (Fetch from Auth Server)</option>
+                          </select>
+                      </div>
+
+                      {action.authType === 'dynamic' && (
+                          <div style={{ paddingLeft: '1rem', borderLeft: '2px solid #444' }}>
+                              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                                  <div style={{ width: '100px' }}>
+                                      <label style={{fontSize: '0.8rem', color: '#888'}}>Method</label>
+                                      <select
+                                          value={action.authMethod || 'POST'}
+                                          onChange={(e) => handleUpdateAction(aIndex, 'authMethod', e.target.value)}
+                                          style={{ width: '100%' }}
+                                      >
+                                          <option value="POST">POST</option>
+                                          <option value="GET">GET</option>
+                                      </select>
+                                  </div>
+                                  <div style={{ flex: 1 }}>
+                                      <label style={{fontSize: '0.8rem', color: '#888'}}>Auth URL</label>
+                                      <input
+                                          type="text"
+                                          value={action.authUrl || ''}
+                                          onChange={(e) => handleUpdateAction(aIndex, 'authUrl', e.target.value)}
+                                          placeholder="https://auth.example.com/token"
+                                          style={{ width: '100%' }}
+                                      />
+                                  </div>
+                              </div>
+
+                              <div style={{ marginBottom: '1rem' }}>
+                                  <label style={{fontSize: '0.8rem', color: '#888'}}>Auth Body (JSON)</label>
+                                  <textarea
+                                      value={action.authBody || ''}
+                                      onChange={(e) => handleUpdateAction(aIndex, 'authBody', e.target.value)}
+                                      placeholder='{ "client_id": "...", "client_secret": "..." }'
+                                      style={{ width: '100%', minHeight: '60px', fontFamily: 'monospace', fontSize: '0.85rem', background: '#111', border: '1px solid #444', color: '#ddd' }}
+                                  />
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                                  <div style={{ flex: 1 }}>
+                                      <label style={{fontSize: '0.8rem', color: '#888'}}>Token Path (e.g. data.accessToken)</label>
+                                      <input
+                                          type="text"
+                                          value={action.tokenPath || ''}
+                                          onChange={(e) => handleUpdateAction(aIndex, 'tokenPath', e.target.value)}
+                                          placeholder="access_token"
+                                          style={{ width: '100%' }}
+                                      />
+                                  </div>
+                                  <div style={{ flex: 1 }}>
+                                      <label style={{fontSize: '0.8rem', color: '#888'}}>Token Prefix</label>
+                                      <input
+                                          type="text"
+                                          value={action.tokenPrefix || ''}
+                                          onChange={(e) => handleUpdateAction(aIndex, 'tokenPrefix', e.target.value)}
+                                          placeholder="Bearer "
+                                          style={{ width: '100%' }}
+                                      />
+                                  </div>
+                              </div>
+
+                              <button 
+                                  className="btn-secondary" 
+                                  onClick={() => handleTestAuth(action)}
+                                  style={{ fontSize: '0.8rem' }}
+                              >
+                                  Test Auth & Preview Token
+                              </button>
+                          </div>
+                      )}
                   </div>
 
                   <div style={{ marginBottom: '1rem', background: '#1a1a1a', padding: '1rem', borderRadius: '4px', border: '1px solid #333' }}>
