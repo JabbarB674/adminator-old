@@ -4,6 +4,7 @@ const mysql = require('mysql2/promise');
 const axios = require('axios');
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { validateAppAccess } = require('../utils/accessControl');
+const { signAwsRequest } = require('../utils/awsSigner');
 
 // S3 Config (Duplicated for now, should be shared)
 const s3Client = new S3Client({
@@ -163,11 +164,33 @@ exports.runAction = async (req, res) => {
                 }
             }
 
+            let requestHeaders = { ...(action.headers || {}), ...(req.body.dynamicHeaders || {}) };
+
+            if (action.authType === 'aws_iam') {
+                try {
+                    console.log(`[RemoteDB] Signing request with AWS SigV4 (Region: ${action.awsRegion}, Service: ${action.awsService})`);
+                    const signedHeaders = await signAwsRequest({
+                        appId: appKey,
+                        method: action.method || 'GET',
+                        url: action.url,
+                        region: action.awsRegion,
+                        service: action.awsService,
+                        assumeRoleArn: action.awsAssumeRoleArn,
+                        headers: requestHeaders,
+                        body: payload
+                    });
+                    requestHeaders = signedHeaders;
+                } catch (signErr) {
+                    console.error(`[RemoteDB] AWS Signing failed: ${signErr.message}`);
+                    return res.status(500).json({ error: 'AWS Signing Failed', details: signErr.message });
+                }
+            }
+
             try {
                 const response = await axios({
                     method: action.method || 'GET',
                     url: action.url,
-                    headers: { ...(action.headers || {}), ...(req.body.dynamicHeaders || {}) },
+                    headers: requestHeaders,
                     data: payload
                 });
                 console.log(`[RemoteDB] HTTP action success: ${response.status}`);
