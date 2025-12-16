@@ -211,8 +211,49 @@ export default function ActionEditor({ actions, onChange }) {
                           >
                               <option value="none">None / Static Headers</option>
                               <option value="dynamic">Dynamic Token (Fetch from Auth Server)</option>
+                              <option value="aws_iam">AWS SigV4 (IAM)</option>
                           </select>
                       </div>
+
+                      {action.authType === 'aws_iam' && (
+                          <div style={{ paddingLeft: '1rem', borderLeft: '2px solid #444' }}>
+                              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                                  <div style={{ flex: 1 }}>
+                                      <label style={{fontSize: '0.8rem', color: '#888'}}>AWS Region</label>
+                                      <input
+                                          type="text"
+                                          value={action.awsRegion || ''}
+                                          onChange={(e) => handleUpdateAction(aIndex, 'awsRegion', e.target.value)}
+                                          placeholder="us-east-1"
+                                          style={{ width: '100%' }}
+                                      />
+                                  </div>
+                                  <div style={{ flex: 1 }}>
+                                      <label style={{fontSize: '0.8rem', color: '#888'}}>AWS Service</label>
+                                      <input
+                                          type="text"
+                                          value={action.awsService || ''}
+                                          onChange={(e) => handleUpdateAction(aIndex, 'awsService', e.target.value)}
+                                          placeholder="execute-api"
+                                          style={{ width: '100%' }}
+                                      />
+                                  </div>
+                              </div>
+                              <div style={{ marginBottom: '1rem' }}>
+                                  <label style={{fontSize: '0.8rem', color: '#888'}}>Assume Role ARN (Optional)</label>
+                                  <input
+                                      type="text"
+                                      value={action.awsAssumeRoleArn || ''}
+                                      onChange={(e) => handleUpdateAction(aIndex, 'awsAssumeRoleArn', e.target.value)}
+                                      placeholder="arn:aws:iam::123456789012:role/MyRole"
+                                      style={{ width: '100%' }}
+                                  />
+                                  <p style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.25rem' }}>
+                                      If provided, the backend will assume this role before signing the request.
+                                  </p>
+                              </div>
+                          </div>
+                      )}
 
                       {action.authType === 'dynamic' && (
                           <div style={{ paddingLeft: '1rem', borderLeft: '2px solid #444' }}>

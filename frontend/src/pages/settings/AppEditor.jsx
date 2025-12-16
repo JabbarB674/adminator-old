@@ -3,6 +3,7 @@ import LayoutEditor from './editors/LayoutEditor';
 import DataSourceEditor from './editors/DataSourceEditor';
 import BucketSourceEditor from './editors/BucketSourceEditor';
 import ActionEditor from './editors/ActionEditor';
+import IntegrationsEditor from './editors/IntegrationsEditor';
 import { apiUrl } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
@@ -43,7 +44,10 @@ export default function AppEditor() {
       tables: []
     },
     bucketSource: null,
-    actions: []
+    actions: [],
+    integrations: {
+      aws: { accessKeyId: '', secretAccessKey: '', region: 'us-east-1' }
+    }
   });
 
   useEffect(() => {
@@ -84,7 +88,8 @@ export default function AppEditor() {
             layout: json.layout || { type: 'dashboard-grid', sections: [] },
             dataSource: json.dataSource || { type: 'mssql', config: { server: '', port: 1433, database: '', user: '', password: '' }, tables: [] },
             bucketSource: json.bucketSource || null,
-            actions: json.actions || []
+            actions: json.actions || [],
+            integrations: json.integrations || { aws: { accessKeyId: '', secretAccessKey: '', region: 'us-east-1' } }
         });
         setIsEditing(true);
         setLoadedAppKey(appKey);
@@ -102,7 +107,8 @@ export default function AppEditor() {
         layout: { type: 'dashboard-grid', sections: [] },
         dataSource: { type: 'mssql', config: { server: '', port: 1433, database: '', user: '', password: '' }, tables: [] },
         bucketSource: null,
-        actions: []
+        actions: [],
+        integrations: { aws: { accessKeyId: '', secretAccessKey: '', region: 'us-east-1' } }
     });
     setIsEditing(false);
     setLoadedAppKey(null);
@@ -342,6 +348,12 @@ export default function AppEditor() {
               Connection & API
             </button>
             <button 
+              className={activeTab === 'integrations' ? 'active' : ''} 
+              onClick={() => setActiveTab('integrations')}
+            >
+              Integrations
+            </button>
+            <button 
               className={activeTab === 'layout' ? 'active' : ''} 
               onClick={() => setActiveTab('layout')}
             >
@@ -473,6 +485,17 @@ export default function AppEditor() {
             </div>
           )}
 
+          {activeTab === 'integrations' && (
+            <div className="editor-section">
+              <h2>Integrations</h2>
+              <p className="hint">Configure external services and cloud providers.</p>
+              <IntegrationsEditor 
+                integrations={config.integrations}
+                onChange={(newIntegrations) => setConfig(prev => ({ ...prev, integrations: newIntegrations }))}
+              />
+            </div>
+          )}
+
           {activeTab === 'layout' && (
             <div className="editor-section">
               <h2>UI Layout Configuration</h2>
@@ -503,6 +526,7 @@ export default function AppEditor() {
               <p className="hint">Configure an S3-compatible bucket for file management.</p>
               <BucketSourceEditor 
                 bucketSource={config.bucketSource}
+                appKey={config.meta.appKey}
                 onChange={(newBucketSource) => setConfig(prev => ({ ...prev, bucketSource: newBucketSource }))}
               />
             </div>

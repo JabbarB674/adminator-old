@@ -17,6 +17,7 @@ functions:
           path: loginTest
           method: any
           cors: true
+          authorizer: aws_iam
   getUsers:
     handler: apps/tasty-customers/getUsers.handler
     events:
@@ -24,6 +25,7 @@ functions:
           path: getUsers
           method: get
           cors: true
+          authorizer: aws_iam
 
 custom:
   serverless-offline:

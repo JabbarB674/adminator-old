@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 
 export default function DbLookup() {
   const { user } = useAuth();
-  const [query, setQuery] = useState('SELECT TOP 10 * FROM Adminator_Users');
+  const [query, setQuery] = useState('SELECT * FROM Adminator_Users');
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);

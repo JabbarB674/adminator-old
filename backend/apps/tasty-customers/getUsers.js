@@ -80,13 +80,17 @@ exports.handler = async (event) => {
     // Fetch config first to get the secret
     config = await getConfig();
     
-    // Authenticate the user using the fetched secret
-    const user = authenticate(event, config.jwtSecret);
-    console.log('Authenticated user:', user);
+    // AUTHENTICATION NOTE:
+    // We are now using AWS IAM Authorization (SigV4) at the API Gateway level.
+    // The request is only allowed through if it has a valid AWS Signature from an authorized principal.
+    // Therefore, we no longer need to manually verify a JWT here for access control.
+    // const user = authenticate(event, config.jwtSecret);
+    console.log('Access granted via AWS IAM');
+
   } catch (err) {
-    console.error('Authentication error:', err);
+    console.error('Configuration error:', err);
     return {
-      statusCode: 401,
+      statusCode: 500,
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Content-Type': 'application/json'

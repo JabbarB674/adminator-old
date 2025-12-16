@@ -1,0 +1,1 @@
+ALTER TABLE adminator_apps ADD COLUMN IF NOT EXISTS route_path VARCHAR(255);

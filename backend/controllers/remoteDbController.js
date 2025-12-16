@@ -5,6 +5,7 @@ const axios = require('axios');
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { validateAppAccess } = require('../utils/accessControl');
 const { signAwsRequest } = require('../utils/awsSigner');
+const secretsService = require('../services/secretsService');
 
 // S3 Config (Duplicated for now, should be shared)
 const s3Client = new S3Client({
@@ -25,7 +26,49 @@ const getAppConfig = async (appKey) => {
         const command = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key });
         const response = await s3Client.send(command);
         const str = await response.Body.transformToString();
-        return JSON.parse(str);
+        const config = JSON.parse(str);
+
+        // --- SECURE SECRET INJECTION ---
+        // Check for {{VAULT:key}} placeholders and resolve them
+        // We'll do a simple string replacement on the JSON string for simplicity, 
+        // or traverse specific fields. String replacement is riskier if keys overlap, 
+        // but efficient. Let's traverse specific known secret fields for safety.
+
+        // 1. Data Source Password
+        if (config.dataSource?.config?.password && config.dataSource.config.password.startsWith('{{VAULT:')) {
+            const secretKey = config.dataSource.config.password.replace('{{VAULT:', '').replace('}}', '');
+            const secretVal = await secretsService.getAppSecret(appKey, secretKey);
+            if (secretVal) config.dataSource.config.password = secretVal;
+        }
+
+        // 2. Bucket Source Credentials
+        if (config.bucketSource) {
+            // Check for AWS Integration Mode
+            if (config.bucketSource.authMode === 'aws_integration') {
+                const awsCreds = await secretsService.getAwsBaseCreds(appKey);
+                config.bucketSource.config.accessKeyId = awsCreds.accessKeyId;
+                config.bucketSource.config.secretAccessKey = awsCreds.secretAccessKey;
+                if (!config.bucketSource.config.region) {
+                    config.bucketSource.config.region = awsCreds.region;
+                }
+            } 
+            // Fallback to Custom Credentials
+            else if (config.bucketSource.config) {
+                if (config.bucketSource.config.accessKeyId && config.bucketSource.config.accessKeyId.startsWith('{{VAULT:')) {
+                    const k = config.bucketSource.config.accessKeyId.replace('{{VAULT:', '').replace('}}', '');
+                    const v = await secretsService.getAppSecret(appKey, k);
+                    if (v) config.bucketSource.config.accessKeyId = v;
+                }
+                if (config.bucketSource.config.secretAccessKey && config.bucketSource.config.secretAccessKey.startsWith('{{VAULT:')) {
+                    const k = config.bucketSource.config.secretAccessKey.replace('{{VAULT:', '').replace('}}', '');
+                    const v = await secretsService.getAppSecret(appKey, k);
+                    if (v) config.bucketSource.config.secretAccessKey = v;
+                }
+            }
+        }
+        // -------------------------------
+
+        return config;
     } catch (e) {
         console.error('Error loading app config:', e);
         throw new Error('App configuration not found');
@@ -75,8 +118,10 @@ exports.getData = async (req, res) => {
 
         if (dataSource.type === 'mssql') {
             return getMssqlData(dataSource.config, tableName, res);
+        } else if (dataSource.type === 'postgres') {
+            return getPostgresData(dataSource.config, tableName, res);
         } else {
-            return res.status(501).json({ error: 'Only MSSQL supported for data operations currently.' });
+            return res.status(501).json({ error: 'Only MSSQL and Postgres supported for data operations currently.' });
         }
     } catch (err) {
         console.error('[RemoteDB] Error fetching data:', err);
@@ -215,8 +260,10 @@ exports.runAction = async (req, res) => {
 
             if (dataSource.type === 'mssql') {
                 return runMssqlQuery(dataSource.config, action.query, payload, res);
+            } else if (dataSource.type === 'postgres') {
+                return runPostgresQuery(dataSource.config, action.query, payload, res);
             } else {
-                 return res.status(501).json({ error: 'SQL Actions only supported for MSSQL currently.' });
+                 return res.status(501).json({ error: 'SQL Actions only supported for MSSQL and Postgres currently.' });
             }
         } else {
             return res.status(400).json({ error: `Unknown action type: ${action.type}` });
@@ -356,6 +403,64 @@ const updateMssqlData = (config, tableName, updates, pkCol, res) => {
     });
     
     connection.connect();
+};
+
+const getPostgresData = async (config, tableName, res) => {
+    const client = new Client({
+        host: config.server,
+        port: parseInt(config.port) || 5432,
+        database: config.database,
+        user: config.user,
+        password: config.password,
+        ssl: { rejectUnauthorized: false }
+    });
+
+    try {
+        await client.connect();
+        
+        const safeTable = tableName.replace(/[^a-zA-Z0-9_.]/g, '');
+        const query = `SELECT * FROM ${safeTable} LIMIT 100`;
+        
+        const result = await client.query(query);
+        await client.end();
+        
+        res.json(result.rows);
+    } catch (err) {
+        try { await client.end(); } catch (e) {}
+        res.status(500).json({ error: 'Postgres Query Failed: ' + err.message });
+    }
+};
+
+const runPostgresQuery = async (config, query, params, res) => {
+    const client = new Client({
+        host: config.server,
+        port: parseInt(config.port) || 5432,
+        database: config.database,
+        user: config.user,
+        password: config.password,
+        ssl: { rejectUnauthorized: false }
+    });
+
+    try {
+        await client.connect();
+
+        let finalQuery = query;
+        if (params && typeof params === 'object') {
+            Object.entries(params).forEach(([key, val]) => {
+                const safeVal = typeof val === 'string' ? `'${val.replace(/'/g, "''")}'` : val;
+                finalQuery = finalQuery.replace(new RegExp(`@${key}`, 'g'), safeVal);
+            });
+        }
+
+        const result = await client.query(finalQuery);
+        await client.end();
+
+        res.json({ success: true, rows: result.rows });
+
+    } catch (err) {
+        try { await client.end(); } catch (e) {}
+        res.status(500).json({ error: 'Postgres Action Failed: ' + err.message });
+    }
 };
 
 const updatePostgresData = async (config, tableName, updates, pkCol, res) => {

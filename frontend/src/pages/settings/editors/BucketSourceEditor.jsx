@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { apiUrl } from '../../../utils/api';
 
-export default function BucketSourceEditor({ bucketSource, onChange }) {
+export default function BucketSourceEditor({ bucketSource, onChange, appKey }) {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [error, setError] = useState(null);
 
   const data = bucketSource || {
+    authMode: 'custom', // 'custom' | 'aws_integration'
     config: {
       endpoint: '',
       region: 'us-east-1',
@@ -19,6 +20,13 @@ export default function BucketSourceEditor({ bucketSource, onChange }) {
       write: true,
       delete: false
     }
+  };
+
+  const handleAuthModeChange = (mode) => {
+      onChange({
+          ...data,
+          authMode: mode
+      });
   };
 
   const handleConfigChange = (field, value) => {
@@ -48,7 +56,11 @@ export default function BucketSourceEditor({ bucketSource, onChange }) {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ config: data.config })
+            body: JSON.stringify({ 
+                config: data.config,
+                authMode: data.authMode,
+                appKey: appKey
+            })
         });
 
         const json = await res.json();
@@ -105,6 +117,18 @@ export default function BucketSourceEditor({ bucketSource, onChange }) {
       )}
 
       <div className="form-group">
+          <label>Authentication Mode</label>
+          <select 
+              value={data.authMode || 'custom'} 
+              onChange={(e) => handleAuthModeChange(e.target.value)}
+              style={{ width: '100%', padding: '0.5rem', background: '#333', color: '#fff', border: '1px solid #555' }}
+          >
+              <option value="custom">Custom Credentials (Specific to this bucket)</option>
+              <option value="aws_integration">Use App AWS Integration (Shared Keys)</option>
+          </select>
+      </div>
+
+      <div className="form-group">
         <label>Endpoint URL</label>
         <input 
           type="text" 
@@ -136,24 +160,40 @@ export default function BucketSourceEditor({ bucketSource, onChange }) {
         </div>
       </div>
 
+      {data.authMode !== 'aws_integration' && (
       <div className="form-row">
         <div className="form-group">
           <label>Access Key ID</label>
           <input 
             type="text" 
-            value={data.config?.accessKeyId || ''} 
+            value={data.config?.accessKeyId && data.config.accessKeyId.startsWith('{{VAULT:') ? '' : (data.config?.accessKeyId || '')} 
             onChange={e => handleConfigChange('accessKeyId', e.target.value)}
+            placeholder={data.config?.accessKeyId && data.config.accessKeyId.startsWith('{{VAULT:') ? 'Stored in Vault (Type to overwrite)' : ''}
+            style={data.config?.accessKeyId && data.config.accessKeyId.startsWith('{{VAULT:') ? { fontStyle: 'italic', color: '#aaa' } : {}}
           />
         </div>
         <div className="form-group">
           <label>Secret Access Key</label>
           <input 
             type="password" 
-            value={data.config?.secretAccessKey || ''} 
+            autoComplete="new-password"
+            data-lpignore="true"
+            value={data.config?.secretAccessKey && data.config.secretAccessKey.startsWith('{{VAULT:') ? '' : (data.config?.secretAccessKey || '')} 
             onChange={e => handleConfigChange('secretAccessKey', e.target.value)}
+            placeholder={data.config?.secretAccessKey && data.config.secretAccessKey.startsWith('{{VAULT:') ? 'Stored in Vault (Type to overwrite)' : ''}
+            style={data.config?.secretAccessKey && data.config.secretAccessKey.startsWith('{{VAULT:') ? { fontStyle: 'italic', color: '#aaa' } : {}}
           />
         </div>
       </div>
+      )}
+
+      {data.authMode === 'aws_integration' && (
+          <div style={{ padding: '1rem', background: '#2a2a2a', border: '1px solid #444', borderRadius: '4px', marginBottom: '1rem' }}>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#aaa' }}>
+                  Using AWS Credentials configured in the <strong>Integrations</strong> tab.
+              </p>
+          </div>
+      )}
 
       <h4 style={{ marginTop: '2rem', borderBottom: '1px solid #333', paddingBottom: '0.5rem' }}>Permissions</h4>
       <div className="form-row" style={{ justifyContent: 'flex-start', gap: '2rem' }}>

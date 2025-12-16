@@ -1,7 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { TYPES } = require('tedious');
-const { executeQuery } = require('../config/db');
+const { pool } = require('../config/pg');
 
 exports.login = async (req, res) => {
     const { email, password } = req.body;
@@ -14,65 +13,70 @@ exports.login = async (req, res) => {
     }
 
     try {
-        // console.log('Login request body:', req.body); // Redundant with above log
+        // 1. Get User & Profile Info
+        const userQuery = `
+            SELECT 
+                u.user_id, u.email, u.password_hash, u.first_name, u.last_name, u.is_active,
+                p.profile_id, p.profile_name, p.is_global_admin
+            FROM adminator_users u
+            LEFT JOIN adminator_access_profiles p ON u.profile_id = p.profile_id
+            WHERE u.email = $1 AND u.is_active = true
+        `;
+        
+        const userResult = await pool.query(userQuery, [email]);
 
-        const query = 'EXEC sp_Adminator_Login @Email = @Email;';
-        const params = [{ name: 'Email', type: TYPES.NVarChar, value: email }];
-
-        const resultSets = await executeQuery(query, params);
-
-        // console.log('Query result sets:', resultSets.length);
-
-        // Result Set 1: User Info
-        const userRows = resultSets[0] || [];
-        if (userRows.length === 0) {
+        if (userResult.rows.length === 0) {
             console.warn(`[AUTH] Login failed: User not found or invalid credentials for ${email}`);
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        const userRow = userRows[0];
+        const userRow = userResult.rows[0];
         
         // Verify password
-        const isMatch = await bcrypt.compare(password, userRow.PasswordHash);
+        const isMatch = await bcrypt.compare(password, userRow.password_hash);
         if (!isMatch) {
             console.warn(`[AUTH] Login failed: Invalid password for ${email}`);
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        console.log(`[AUTH] Login success: ${email} (ID: ${userRow.UserId})`);
+        console.log(`[AUTH] Login success: ${email} (ID: ${userRow.user_id})`);
 
-        const user = {
-            userId: userRow.UserId,
-            email: userRow.Email,
-            passwordHash: userRow.PasswordHash,
-            firstName: userRow.FirstName,
-            lastName: userRow.LastName,
-            profileId: userRow.ProfileId,
-            profileName: userRow.ProfileName,
-            isGlobalAdmin: userRow.IsGlobalAdmin
-        };
-
-        // Result Set 2: Allowed Apps
-        let appRows = resultSets[1] || [];
-
-        // FORCE SUPERADMIN ACCESS: If Global Admin, fetch ALL apps regardless of SP result
-        if (user.isGlobalAdmin) {
-            const allAppsQuery = 'SELECT AppId, AppKey, AppName, Description, AppIcon, RoutePath, ConfigPath FROM Adminator_Apps WHERE IsActive = 1 ORDER BY AppName';
-            const allAppsResult = await executeQuery(allAppsQuery);
-            appRows = allAppsResult[0] || [];
+        // 2. Get Accessible Apps
+        let allowedApps = [];
+        if (userRow.is_global_admin) {
+            // Global Admin gets everything
+            const allAppsQuery = `
+                SELECT app_id, app_key, app_name, description, app_icon, config_path 
+                FROM adminator_apps 
+                WHERE is_active = true 
+                ORDER BY app_name
+            `;
+            const allAppsResult = await pool.query(allAppsQuery);
+            allowedApps = allAppsResult.rows;
+        } else {
+            // Regular users get assigned apps
+            const appsQuery = `
+                SELECT 
+                    a.app_id, a.app_key, a.app_name, a.description, a.app_icon, a.config_path,
+                    pa.permission_level
+                FROM adminator_apps a
+                JOIN adminator_profile_apps pa ON a.app_id = pa.app_id
+                WHERE pa.profile_id = $1 AND a.is_active = true
+            `;
+            const appsResult = await pool.query(appsQuery, [userRow.profile_id]);
+            allowedApps = appsResult.rows;
         }
 
-        const allowedApps = appRows.map(row => ({
-            appId: row.AppId,
-            appKey: row.AppKey,
-            appName: row.AppName,
-            description: row.Description,
-            appIcon: row.AppIcon,
-            routePath: row.RoutePath,
-            configPath: row.ConfigPath
-        }));
-
-        // Password validation moved up
+        const user = {
+            userId: userRow.user_id,
+            email: userRow.email,
+            firstName: userRow.first_name,
+            lastName: userRow.last_name,
+            profileId: userRow.profile_id,
+            profileName: userRow.profile_name,
+            isGlobalAdmin: userRow.is_global_admin,
+            allowedApps: allowedApps
+        };
 
         const token = jwt.sign(
             { 
@@ -80,23 +84,24 @@ exports.login = async (req, res) => {
                 email: user.email, 
                 profileId: user.profileId,
                 isGlobalAdmin: user.isGlobalAdmin,
-                allowedApps: allowedApps.map(a => a.appKey) // Store keys in token for easy checking
+                allowedApps: allowedApps.map(a => a.app_key) // Store keys in token
             },
             process.env.JWT_SECRET,
             { expiresIn: '24h' }
         );
 
-        console.log('Generated JWT token:', token);
-
         res.json({
             token,
             user: {
-                email: user.email,
-                firstName: user.firstName,
-                lastName: user.lastName,
-                profileName: user.profileName,
-                isGlobalAdmin: user.isGlobalAdmin,
-                allowedApps: allowedApps
+                ...user,
+                allowedApps: allowedApps.map(a => ({
+                    appId: a.app_id,
+                    appKey: a.app_key,
+                    appName: a.app_name,
+                    description: a.description,
+                    appIcon: a.app_icon,
+                    configPath: a.config_path
+                }))
             }
         });
 
@@ -110,56 +115,66 @@ exports.refreshProfile = async (req, res) => {
     try {
         const email = req.user.email; // From JWT middleware
         
-        const query = 'EXEC sp_Adminator_Login @Email = @Email;';
-        const params = [{ name: 'Email', type: TYPES.NVarChar, value: email }];
+        const userQuery = `
+            SELECT 
+                u.user_id, u.email, u.first_name, u.last_name, u.is_active,
+                p.profile_id, p.profile_name, p.is_global_admin
+            FROM adminator_users u
+            LEFT JOIN adminator_access_profiles p ON u.profile_id = p.profile_id
+            WHERE u.email = $1 AND u.is_active = true
+        `;
+        
+        const userResult = await pool.query(userQuery, [email]);
 
-        const resultSets = await executeQuery(query, params);
-
-        // Result Set 1: User Info
-        const userRows = resultSets[0] || [];
-        if (userRows.length === 0) {
+        if (userResult.rows.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        const userRow = userRows[0];
-        const user = {
-            userId: userRow.UserId,
-            email: userRow.Email,
-            firstName: userRow.FirstName,
-            lastName: userRow.LastName,
-            profileId: userRow.ProfileId,
-            profileName: userRow.ProfileName,
-            isGlobalAdmin: userRow.IsGlobalAdmin
-        };
+        const userRow = userResult.rows[0];
 
-        // Result Set 2: Allowed Apps
-        let appRows = resultSets[1] || [];
-
-        // FORCE SUPERADMIN ACCESS: If Global Admin, fetch ALL apps regardless of SP result
-        if (user.isGlobalAdmin) {
-            const allAppsQuery = 'SELECT AppId, AppKey, AppName, Description, AppIcon, RoutePath, ConfigPath FROM Adminator_Apps WHERE IsActive = 1 ORDER BY AppName';
-            const allAppsResult = await executeQuery(allAppsQuery);
-            appRows = allAppsResult[0] || [];
+        // Get Accessible Apps
+        let allowedApps = [];
+        if (userRow.is_global_admin) {
+            const allAppsQuery = `
+                SELECT app_id, app_key, app_name, description, app_icon, config_path 
+                FROM adminator_apps 
+                WHERE is_active = true 
+                ORDER BY app_name
+            `;
+            const allAppsResult = await pool.query(allAppsQuery);
+            allowedApps = allAppsResult.rows;
+        } else {
+            const appsQuery = `
+                SELECT 
+                    a.app_id, a.app_key, a.app_name, a.description, a.app_icon, a.config_path,
+                    pa.permission_level
+                FROM adminator_apps a
+                JOIN adminator_profile_apps pa ON a.app_id = pa.app_id
+                WHERE pa.profile_id = $1 AND a.is_active = true
+            `;
+            const appsResult = await pool.query(appsQuery, [userRow.profile_id]);
+            allowedApps = appsResult.rows;
         }
 
-        const allowedApps = appRows.map(row => ({
-            appId: row.AppId,
-            appKey: row.AppKey,
-            appName: row.AppName,
-            description: row.Description,
-            appIcon: row.AppIcon,
-            routePath: row.RoutePath,
-            configPath: row.ConfigPath
-        }));
+        const user = {
+            userId: userRow.user_id,
+            email: userRow.email,
+            firstName: userRow.first_name,
+            lastName: userRow.last_name,
+            profileId: userRow.profile_id,
+            profileName: userRow.profile_name,
+            isGlobalAdmin: userRow.is_global_admin,
+            allowedApps: allowedApps
+        };
 
-        // Issue a new token with updated claims (optional, but good practice if claims changed)
+        // Issue a new token
         const token = jwt.sign(
             { 
                 userId: user.userId, 
                 email: user.email, 
                 profileId: user.profileId,
                 isGlobalAdmin: user.isGlobalAdmin,
-                allowedApps: allowedApps.map(a => a.appKey)
+                allowedApps: allowedApps.map(a => a.app_key)
             },
             process.env.JWT_SECRET,
             { expiresIn: '24h' }
@@ -168,12 +183,15 @@ exports.refreshProfile = async (req, res) => {
         res.json({
             token,
             user: {
-                email: user.email,
-                firstName: user.firstName,
-                lastName: user.lastName,
-                profileName: user.profileName,
-                isGlobalAdmin: user.isGlobalAdmin,
-                allowedApps: allowedApps
+                ...user,
+                allowedApps: allowedApps.map(a => ({
+                    appId: a.app_id,
+                    appKey: a.app_key,
+                    appName: a.app_name,
+                    description: a.description,
+                    appIcon: a.app_icon,
+                    configPath: a.config_path
+                }))
             }
         });
 

@@ -53,20 +53,6 @@ async function seedVault() {
 
     await writeSecret('adminator/config', systemConfig);
 
-    // 2. App Integrations (AWS Base Identity)
-    // This is for the 'tasty-customers' app (App ID: tasty-customers)
-    const tastyAppAws = {
-        access_key_id: process.env.AWS_ACCESS_KEY_ID,
-        secret_access_key: process.env.AWS_SECRET_ACCESS_KEY,
-        region: process.env.AWS_REGION || 'us-east-1'
-    };
-
-    if (tastyAppAws.access_key_id && tastyAppAws.secret_access_key) {
-        await writeSecret('apps/tasty-customers/integrations/aws/base', tastyAppAws);
-    } else {
-        console.warn('⚠️ Skipping AWS seeding: AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY missing in .env');
-    }
-
     console.log('Vault seeding complete.');
 }
 

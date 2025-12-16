@@ -1,5 +1,4 @@
-const { TYPES } = require('tedious');
-const { executeQuery } = require('../config/db');
+const { pool } = require('../config/pg');
 const bcrypt = require('bcryptjs');
 
 // Get all users with their profile info
@@ -8,15 +7,22 @@ exports.getUsers = async (req, res) => {
     try {
         const query = `
             SELECT 
-                u.UserId, u.Email, u.FirstName, u.LastName, u.IsActive, u.LastLogin,
-                p.ProfileId, p.ProfileName, p.IsGlobalAdmin
-            FROM Adminator_Users u
-            LEFT JOIN Adminator_AccessProfiles p ON u.ProfileId = p.ProfileId
-            ORDER BY u.UserId DESC
+                u.user_id AS "UserId", 
+                u.email AS "Email", 
+                u.first_name AS "FirstName", 
+                u.last_name AS "LastName", 
+                u.is_active AS "IsActive", 
+                u.last_login AS "LastLogin",
+                p.profile_id AS "ProfileId", 
+                p.profile_name AS "ProfileName", 
+                p.is_global_admin AS "IsGlobalAdmin"
+            FROM adminator_users u
+            LEFT JOIN adminator_access_profiles p ON u.profile_id = p.profile_id
+            ORDER BY u.user_id DESC
         `;
         
-        const resultSets = await executeQuery(query, []);
-        const users = resultSets[0] || [];
+        const result = await pool.query(query);
+        const users = result.rows;
         
         console.log(`[USERS] Retrieved ${users.length} users`);
         res.json(users);
@@ -29,9 +35,16 @@ exports.getUsers = async (req, res) => {
 // Get all available profiles for the dropdown
 exports.getProfiles = async (req, res) => {
     try {
-        const query = `SELECT ProfileId, ProfileName, Description FROM Adminator_AccessProfiles ORDER BY ProfileName`;
-        const resultSets = await executeQuery(query, []);
-        res.json(resultSets[0] || []);
+        const query = `
+            SELECT 
+                profile_id AS "ProfileId", 
+                profile_name AS "ProfileName", 
+                description AS "Description" 
+            FROM adminator_access_profiles 
+            ORDER BY profile_name
+        `;
+        const result = await pool.query(query);
+        res.json(result.rows);
     } catch (error) {
         console.error('Error fetching profiles:', error);
         res.status(500).json({ error: 'Failed to fetch profiles' });
@@ -51,11 +64,10 @@ exports.createUser = async (req, res) => {
 
     try {
         // Check if email exists
-        const checkQuery = 'SELECT COUNT(*) as count FROM Adminator_Users WHERE Email = @Email';
-        const checkParams = [{ name: 'Email', type: TYPES.NVarChar, value: email }];
-        const checkResult = await executeQuery(checkQuery, checkParams);
+        const checkQuery = 'SELECT COUNT(*) as count FROM adminator_users WHERE email = $1';
+        const checkResult = await pool.query(checkQuery, [email]);
         
-        if (checkResult[0][0].count > 0) {
+        if (parseInt(checkResult.rows[0].count) > 0) {
             console.warn(`[USERS] Creation failed: Email ${email} already exists`);
             return res.status(400).json({ error: 'Email already in use' });
         }
@@ -65,20 +77,18 @@ exports.createUser = async (req, res) => {
         const passwordHash = await bcrypt.hash(password, salt);
 
         const insertQuery = `
-            INSERT INTO Adminator_Users (Email, PasswordHash, FirstName, LastName, ProfileId, IsActive)
-            VALUES (@Email, @PasswordHash, @FirstName, @LastName, @ProfileId, @IsActive);
+            INSERT INTO adminator_users (email, password_hash, first_name, last_name, profile_id, is_active)
+            VALUES ($1, $2, $3, $4, $5, $6)
         `;
 
-        const params = [
-            { name: 'Email', type: TYPES.NVarChar, value: email },
-            { name: 'PasswordHash', type: TYPES.NVarChar, value: passwordHash },
-            { name: 'FirstName', type: TYPES.NVarChar, value: firstName || null },
-            { name: 'LastName', type: TYPES.NVarChar, value: lastName || null },
-            { name: 'ProfileId', type: TYPES.Int, value: profileId },
-            { name: 'IsActive', type: TYPES.Bit, value: isActive === undefined ? 1 : (isActive ? 1 : 0) }
-        ];
-
-        await executeQuery(insertQuery, params);
+        await pool.query(insertQuery, [
+            email, 
+            passwordHash, 
+            firstName || null, 
+            lastName || null, 
+            profileId, 
+            isActive === undefined ? true : isActive
+        ]);
 
         console.log(`[USERS] User created successfully: ${email}`);
         res.status(201).json({ message: 'User created successfully' });
@@ -94,32 +104,33 @@ exports.getUserApps = async (req, res) => {
     try {
         // Get User's Profile Info
         const userQuery = `
-            SELECT u.UserId, u.ProfileId, p.ProfileName, p.IsGlobalAdmin 
-            FROM Adminator_Users u
-            LEFT JOIN Adminator_AccessProfiles p ON u.ProfileId = p.ProfileId
-            WHERE u.UserId = @UserId
+            SELECT u.user_id, u.profile_id, p.profile_name, p.is_global_admin 
+            FROM adminator_users u
+            LEFT JOIN adminator_access_profiles p ON u.profile_id = p.profile_id
+            WHERE u.user_id = $1
         `;
-        const userRes = await executeQuery(userQuery, [{ name: 'UserId', type: TYPES.Int, value: userId }]);
         
-        if (userRes[0].length === 0) return res.status(404).json({ error: 'User not found' });
-        const user = userRes[0][0];
+        const userRes = await pool.query(userQuery, [userId]);
+        
+        if (userRes.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        const user = userRes.rows[0];
 
         // Check if this is a custom profile
-        const isCustomProfile = user.ProfileName && user.ProfileName.startsWith(`Custom_User_${userId}`);
+        const isCustomProfile = user.profile_name && user.profile_name.startsWith(`Custom_User_${userId}`);
 
         // Get assigned apps for this profile
         let assignedAppIds = [];
-        if (user.ProfileId) {
-            const appsQuery = 'SELECT AppId FROM Adminator_ProfileAppAccess WHERE ProfileId = @ProfileId';
-            const appsRes = await executeQuery(appsQuery, [{ name: 'ProfileId', type: TYPES.Int, value: user.ProfileId }]);
-            assignedAppIds = appsRes[0].map(row => row.AppId);
+        if (user.profile_id) {
+            const appsQuery = 'SELECT app_id FROM adminator_profile_apps WHERE profile_id = $1';
+            const appsRes = await pool.query(appsQuery, [user.profile_id]);
+            assignedAppIds = appsRes.rows.map(row => row.app_id);
         }
 
         res.json({
             useCustomAccess: isCustomProfile,
             assignedAppIds,
-            profileName: user.ProfileName,
-            isGlobalAdmin: user.IsGlobalAdmin
+            profileName: user.profile_name,
+            isGlobalAdmin: user.is_global_admin
         });
     } catch (error) {
         console.error('Error fetching user apps:', error);
@@ -134,81 +145,67 @@ exports.updateUserApps = async (req, res) => {
 
     try {
         // 1. Get current user info
-        const userQuery = 'SELECT u.ProfileId, p.ProfileName FROM Adminator_Users u LEFT JOIN Adminator_AccessProfiles p ON u.ProfileId = p.ProfileId WHERE UserId = @UserId';
-        const userRes = await executeQuery(userQuery, [{ name: 'UserId', type: TYPES.Int, value: userId }]);
-        if (userRes[0].length === 0) return res.status(404).json({ error: 'User not found' });
+        const userQuery = 'SELECT u.profile_id, p.profile_name FROM adminator_users u LEFT JOIN adminator_access_profiles p ON u.profile_id = p.profile_id WHERE user_id = $1';
+        const userRes = await pool.query(userQuery, [userId]);
+        if (userRes.rows.length === 0) return res.status(404).json({ error: 'User not found' });
         
-        const currentUser = userRes[0][0];
+        const currentUser = userRes.rows[0];
         const customProfileName = `Custom_User_${userId}`;
 
         if (useCustomAccess) {
             let profileId;
 
             // Check if custom profile already exists
-            const profileQuery = 'SELECT ProfileId FROM Adminator_AccessProfiles WHERE ProfileName = @ProfileName';
-            const profileRes = await executeQuery(profileQuery, [{ name: 'ProfileName', type: TYPES.NVarChar, value: customProfileName }]);
+            const profileQuery = 'SELECT profile_id FROM adminator_access_profiles WHERE profile_name = $1';
+            const profileRes = await pool.query(profileQuery, [customProfileName]);
 
-            if (profileRes[0].length > 0) {
-                profileId = profileRes[0][0].ProfileId;
+            if (profileRes.rows.length > 0) {
+                profileId = profileRes.rows[0].profile_id;
             } else {
                 // Create new custom profile
                 const createProfileQuery = `
-                    INSERT INTO Adminator_AccessProfiles (ProfileName, IsGlobalAdmin, Description) 
-                    OUTPUT INSERTED.ProfileId
-                    VALUES (@ProfileName, 0, 'Custom permissions for user ' + CAST(@UserId AS NVARCHAR))
+                    INSERT INTO adminator_access_profiles (profile_name, is_global_admin, description) 
+                    VALUES ($1, false, $2)
+                    RETURNING profile_id
                 `;
-                const createRes = await executeQuery(createProfileQuery, [
-                    { name: 'ProfileName', type: TYPES.NVarChar, value: customProfileName },
-                    { name: 'UserId', type: TYPES.Int, value: userId }
+                const createRes = await pool.query(createProfileQuery, [
+                    customProfileName, 
+                    `Custom permissions for user ${userId}`
                 ]);
-                profileId = createRes[0][0].ProfileId;
+                profileId = createRes.rows[0].profile_id;
             }
 
             // Assign user to this profile
-            const updateUserQuery = 'UPDATE Adminator_Users SET ProfileId = @ProfileId WHERE UserId = @UserId';
-            await executeQuery(updateUserQuery, [
-                { name: 'ProfileId', type: TYPES.Int, value: profileId },
-                { name: 'UserId', type: TYPES.Int, value: userId }
-            ]);
+            const updateUserQuery = 'UPDATE adminator_users SET profile_id = $1 WHERE user_id = $2';
+            await pool.query(updateUserQuery, [profileId, userId]);
 
             // Update App Permissions for this profile
             // First clear existing
-            const deleteAppsQuery = 'DELETE FROM Adminator_ProfileAppAccess WHERE ProfileId = @ProfileId';
-            await executeQuery(deleteAppsQuery, [{ name: 'ProfileId', type: TYPES.Int, value: profileId }]);
+            const deleteAppsQuery = 'DELETE FROM adminator_profile_apps WHERE profile_id = $1';
+            await pool.query(deleteAppsQuery, [profileId]);
 
             // Insert new apps
             if (appIds && appIds.length > 0) {
                 for (const appId of appIds) {
-                    const insertAppQuery = 'INSERT INTO Adminator_ProfileAppAccess (ProfileId, AppId) VALUES (@ProfileId, @AppId)';
-                    await executeQuery(insertAppQuery, [
-                        { name: 'ProfileId', type: TYPES.Int, value: profileId },
-                        { name: 'AppId', type: TYPES.Int, value: appId }
-                    ]);
+                    const insertAppQuery = 'INSERT INTO adminator_profile_apps (profile_id, app_id) VALUES ($1, $2)';
+                    await pool.query(insertAppQuery, [profileId, appId]);
                 }
             }
 
         } else {
             // Revert to default profile (e.g., 'Administrator' or just remove custom profile assignment)
-            // For safety, we'll set them to 'Administrator' (ProfileId 2 usually) or NULL if not sure.
-            // Better approach: If they were on a custom profile, move them to a safe default.
             
-            if (currentUser.ProfileName === customProfileName) {
-                // Find 'Administrator' profile
-                const adminProfileQuery = "SELECT ProfileId FROM Adminator_AccessProfiles WHERE ProfileName = 'Administrator'";
-                const adminRes = await executeQuery(adminProfileQuery, []);
-                const defaultProfileId = adminRes[0].length > 0 ? adminRes[0][0].ProfileId : null;
+            if (currentUser.profile_name === customProfileName) {
+                // Find 'Administrator' profile (or Global Admin if Administrator doesn't exist)
+                // In our schema we called it 'Global Admin'
+                const adminProfileQuery = "SELECT profile_id FROM adminator_access_profiles WHERE profile_name = 'Global Admin'";
+                const adminRes = await pool.query(adminProfileQuery);
+                const defaultProfileId = adminRes.rows.length > 0 ? adminRes.rows[0].profile_id : null;
 
                 if (defaultProfileId) {
-                    const revertQuery = 'UPDATE Adminator_Users SET ProfileId = @ProfileId WHERE UserId = @UserId';
-                    await executeQuery(revertQuery, [
-                        { name: 'ProfileId', type: TYPES.Int, value: defaultProfileId },
-                        { name: 'UserId', type: TYPES.Int, value: userId }
-                    ]);
+                    const revertQuery = 'UPDATE adminator_users SET profile_id = $1 WHERE user_id = $2';
+                    await pool.query(revertQuery, [defaultProfileId, userId]);
                 }
-                
-                // Optional: Delete the custom profile to clean up
-                // const deleteProfileQuery = 'DELETE FROM Adminator_AccessProfiles WHERE ProfileName = @ProfileName';
-                // await executeQuery(deleteProfileQuery, [{ name: 'ProfileName', type: TYPES.NVarChar, value: customProfileName }]);
             }
         }
 
@@ -230,34 +227,34 @@ exports.updateUser = async (req, res) => {
 
     try {
         let updateQuery = `
-            UPDATE Adminator_Users 
-            SET Email = @Email, 
-                FirstName = @FirstName, 
-                LastName = @LastName, 
-                ProfileId = @ProfileId, 
-                IsActive = @IsActive
+            UPDATE adminator_users 
+            SET email = $1, 
+                first_name = $2, 
+                last_name = $3, 
+                profile_id = $4, 
+                is_active = $5
         `;
 
         const params = [
-            { name: 'UserId', type: TYPES.Int, value: userId },
-            { name: 'Email', type: TYPES.NVarChar, value: email },
-            { name: 'FirstName', type: TYPES.NVarChar, value: firstName || null },
-            { name: 'LastName', type: TYPES.NVarChar, value: lastName || null },
-            { name: 'ProfileId', type: TYPES.Int, value: profileId },
-            { name: 'IsActive', type: TYPES.Bit, value: isActive ? 1 : 0 }
+            email, 
+            firstName || null, 
+            lastName || null, 
+            profileId, 
+            isActive ? true : false
         ];
 
         // Only update password if provided
         if (password && password.trim() !== '') {
             const salt = await bcrypt.genSalt(10);
             const passwordHash = await bcrypt.hash(password, salt);
-            updateQuery += `, PasswordHash = @PasswordHash`;
-            params.push({ name: 'PasswordHash', type: TYPES.NVarChar, value: passwordHash });
+            updateQuery += `, password_hash = $${params.length + 1}`;
+            params.push(passwordHash);
         }
 
-        updateQuery += ` WHERE UserId = @UserId`;
+        updateQuery += ` WHERE user_id = $${params.length + 1}`;
+        params.push(userId);
 
-        await executeQuery(updateQuery, params);
+        await pool.query(updateQuery, params);
 
         res.json({ message: 'User updated successfully' });
     } catch (error) {

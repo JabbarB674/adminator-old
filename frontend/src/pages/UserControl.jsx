@@ -263,6 +263,8 @@ export default function UserControl() {
                 </label>
                 <input 
                   type="password" 
+                  autoComplete="new-password"
+                  data-lpignore="true"
                   required={!editingUser}
                   value={formData.password}
                   onChange={e => setFormData({...formData, password: e.target.value})}

@@ -10,7 +10,7 @@ class SecretsService {
      * @returns {Promise<{accessKeyId: string, secretAccessKey: string, region: string}>}
      */
     async getAwsBaseCreds(appId) {
-        // 1. Try Vault First
+        // 1. Try Vault (Integration Path)
         try {
             const secretPath = `apps/${appId}/integrations/aws/base`;
             const secret = await vaultService.readSecret(secretPath);
@@ -22,11 +22,27 @@ class SecretsService {
                     region: secret.region || process.env.AWS_REGION || 'us-east-1'
                 };
             }
-        } catch (err) {
-            console.warn(`[Secrets] Failed to fetch AWS base creds from Vault for ${appId}: ${err.message}`);
-        }
+        } catch (err) { /* ignore */ }
 
-        // 2. Fallback to Env (Dev Mode Only)
+        // 2. Try Vault (Generic Secrets Path - e.g. from App Editor)
+        try {
+            const secretPath = `apps/${appId}/secrets`;
+            const secret = await vaultService.readSecret(secretPath);
+            
+            // Check for various common key names
+            const accessKey = secret?.aws_access_key || secret?.bucket_access_key;
+            const secretKey = secret?.aws_secret_key || secret?.bucket_secret_key;
+
+            if (accessKey && secretKey) {
+                return {
+                    accessKeyId: accessKey,
+                    secretAccessKey: secretKey,
+                    region: secret?.aws_region || process.env.AWS_REGION || 'us-east-1'
+                };
+            }
+        } catch (err) { /* ignore */ }
+
+        // 3. Fallback to Env (Dev Mode Only)
         if (process.env.NODE_ENV !== 'production') {
             console.log(`[Secrets] Using ENV fallback for AWS Creds (App: ${appId})`);
             return {
@@ -48,6 +64,29 @@ class SecretsService {
         const secretPath = `apps/${appId}/secrets`;
         const secret = await vaultService.readSecret(secretPath);
         return secret ? secret[key] : null;
+    }
+
+    /**
+     * Writes generic app secrets.
+     * Merges with existing secrets if any.
+     * @param {string} appId 
+     * @param {object} secrets - Key-value pairs of secrets
+     */
+    async writeAppSecrets(appId, secrets) {
+        const secretPath = `apps/${appId}/secrets`;
+        
+        // Read existing to merge
+        let existing = {};
+        try {
+            existing = await vaultService.readSecret(secretPath) || {};
+        } catch (e) { /* ignore */ }
+
+        const merged = { ...existing, ...secrets };
+        
+        // Filter out null/undefined to allow deletion? Or just keep simple merge.
+        // For now, simple merge.
+        
+        await vaultService.writeSecret(secretPath, merged);
     }
 
     /**

@@ -1,5 +1,6 @@
 const { S3Client, ListObjectsV2Command, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { validateAppAccess } = require('../utils/accessControl');
+const secretsService = require('../services/secretsService');
 const multer = require('multer');
 
 // System S3 Client for fetching config
@@ -21,7 +22,36 @@ const getAppConfig = async (appKey) => {
         const command = new GetObjectCommand({ Bucket: SYSTEM_BUCKET_NAME, Key: key });
         const response = await systemS3Client.send(command);
         const str = await response.Body.transformToString();
-        return JSON.parse(str);
+        const config = JSON.parse(str);
+
+        // Resolve Secrets for Bucket Source
+        if (config.bucketSource) {
+            // 1. Check if using AWS Integration
+            if (config.bucketSource.authMode === 'aws_integration') {
+                const awsCreds = await secretsService.getAwsBaseCreds(appKey);
+                config.bucketSource.config.accessKeyId = awsCreds.accessKeyId;
+                config.bucketSource.config.secretAccessKey = awsCreds.secretAccessKey;
+                // If region is not set in bucket config, use integration region
+                if (!config.bucketSource.config.region) {
+                    config.bucketSource.config.region = awsCreds.region;
+                }
+            } 
+            // 2. Fallback to Custom Credentials (Vaulted)
+            else if (config.bucketSource.config) {
+                if (config.bucketSource.config.accessKeyId && config.bucketSource.config.accessKeyId.startsWith('{{VAULT:')) {
+                    const k = config.bucketSource.config.accessKeyId.replace('{{VAULT:', '').replace('}}', '');
+                    const v = await secretsService.getAppSecret(appKey, k);
+                    if (v) config.bucketSource.config.accessKeyId = v;
+                }
+                if (config.bucketSource.config.secretAccessKey && config.bucketSource.config.secretAccessKey.startsWith('{{VAULT:')) {
+                    const k = config.bucketSource.config.secretAccessKey.replace('{{VAULT:', '').replace('}}', '');
+                    const v = await secretsService.getAppSecret(appKey, k);
+                    if (v) config.bucketSource.config.secretAccessKey = v;
+                }
+            }
+        }
+
+        return config;
     } catch (e) {
         console.error('Error loading app config:', e);
         throw new Error('App configuration not found');
@@ -47,10 +77,27 @@ const upload = multer({ storage: storage });
 exports.uploadMiddleware = upload.single('file');
 
 exports.testConnection = async (req, res) => {
-    const { config } = req.body;
+    const { config, authMode, appKey } = req.body;
     console.log(`[RemoteBucket] Testing connection to ${config.endpoint || 'AWS S3'} bucket: ${config.bucketName} by ${req.user ? req.user.email : 'Unknown'}`);
 
     try {
+        // Resolve Secrets if using Integration Mode
+        if (authMode === 'aws_integration' && appKey) {
+            try {
+                const awsCreds = await secretsService.getAwsBaseCreds(appKey);
+                config.accessKeyId = awsCreds.accessKeyId;
+                config.secretAccessKey = awsCreds.secretAccessKey;
+                if (!config.region) {
+                    config.region = awsCreds.region;
+                }
+            } catch (err) {
+                console.warn(`[RemoteBucket] Failed to fetch integration creds for test: ${err.message}`);
+                // Continue, maybe they are testing before saving? 
+                // But if they haven't saved, we can't test integration mode.
+                return res.status(400).json({ error: 'Please save the app first to test Integration Mode credentials.' });
+            }
+        }
+
         const client = createBucketClient(config);
         const command = new ListObjectsV2Command({
             Bucket: config.bucketName,

@@ -1,21 +1,35 @@
-const { executeQuery } = require('../config/db');
-const { TYPES } = require('tedious');
+const { pool } = require('../config/pg');
+const { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand, DeleteObjectsCommand } = require('@aws-sdk/client-s3');
+const path = require('path');
+const secretsService = require('../services/secretsService');
 
 exports.getAllApps = async (req, res) => {
     console.log(`[APPS] Fetching all apps for user: ${req.user ? req.user.email : 'Unknown'}`);
     try {
-        const query = 'SELECT AppId, AppKey, AppName, Description, AppIcon, RoutePath FROM Adminator_Apps WHERE IsActive = 1 ORDER BY AppName';
-        const resultSets = await executeQuery(query, []);
-        console.log(`[APPS] Found ${resultSets[0] ? resultSets[0].length : 0} apps`);
-        res.json(resultSets[0] || []);
+        const query = `
+            SELECT app_id, app_key, app_name, description, app_icon, route_path 
+            FROM adminator_apps 
+            WHERE is_active = true 
+            ORDER BY app_name
+        `;
+        const result = await pool.query(query);
+        console.log(`[APPS] Found ${result.rows.length} apps`);
+        
+        const apps = result.rows.map(row => ({
+            appId: row.app_id,
+            appKey: row.app_key,
+            appName: row.app_name,
+            description: row.description,
+            appIcon: row.app_icon,
+            routePath: row.route_path
+        }));
+
+        res.json(apps);
     } catch (error) {
         console.error('[APPS] Error fetching apps:', error);
         res.status(500).json({ error: 'Failed to fetch apps' });
     }
 };
-
-const { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand, DeleteObjectsCommand } = require('@aws-sdk/client-s3');
-const path = require('path');
 
 // S3 Configuration (Duplicated from uploadController - ideally should be in a config file)
 const s3Client = new S3Client({
@@ -23,7 +37,7 @@ const s3Client = new S3Client({
     endpoint: process.env.S3_ENDPOINT || 'http://localhost:9000',
     credentials: {
         accessKeyId: process.env.S3_ACCESS_KEY || 'minioadmin',
-        secretAccessKey: process.env.S3_SECRET_KEY || 'minioadmin'
+        secretAccessKey: process.env.S3_SECRET_KEY
     },
     forcePathStyle: true
 });
@@ -39,6 +53,104 @@ exports.saveAppConfig = async (req, res) => {
 
         // Ensure appKey is URL safe for folder names
         appKey = appKey.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase();
+
+        // --- SECURE SECRET HANDLING ---
+        const secretsToStore = {};
+
+        // 1. Database Password
+        if (config.dataSource?.config?.password) {
+            const pass = config.dataSource.config.password;
+            // Only process if it's not already a placeholder
+            if (pass && !pass.startsWith('{{VAULT:')) {
+                // Check if user accidentally appended to the placeholder (e.g. "{{VAULT:..}}newpass")
+                if (pass.includes('{{VAULT:')) {
+                     // This is the bug case: user edited the field but the placeholder was still there?
+                     // Or the frontend sent back the placeholder + edits.
+                     // We should strip the placeholder part if it exists, or treat as new password.
+                     // If the user typed "abc", the frontend sends "abc".
+                     // If the user typed nothing, the frontend sends "{{VAULT:...}}".
+                     // If the user typed "abc" BUT the frontend logic was flawed, it might send "{{VAULT:...}}abc".
+                     
+                     // Fix: If it contains {{VAULT:}}, assume it's a corrupted edit and try to extract the new part, 
+                     // or just fail safe.
+                     // But with the new frontend logic, the user never sees the placeholder in the value, 
+                     // so they can't append to it unless they manually crafted the request.
+                     
+                     // However, to be safe against the "symbols appended" issue:
+                     const cleanPass = pass.replace(/{{VAULT:[^}]+}}/g, '');
+                     if (cleanPass.length > 0) {
+                         secretsToStore['db_password'] = cleanPass;
+                         config.dataSource.config.password = '{{VAULT:db_password}}';
+                     } else {
+                         // It was just the placeholder, do nothing (keep placeholder)
+                     }
+                } else {
+                    secretsToStore['db_password'] = pass;
+                    config.dataSource.config.password = '{{VAULT:db_password}}';
+                }
+            }
+        }
+
+        // 2. Bucket Source Credentials
+        if (config.bucketSource && config.bucketSource.config) {
+            // Access Key
+            let ak = config.bucketSource.config.accessKeyId;
+            if (ak && !ak.startsWith('{{VAULT:')) {
+                if (ak.includes('{{VAULT:')) {
+                    ak = ak.replace(/{{VAULT:[^}]+}}/g, '');
+                }
+                if (ak.length > 0) {
+                    secretsToStore['bucket_access_key'] = ak;
+                    config.bucketSource.config.accessKeyId = '{{VAULT:bucket_access_key}}';
+                }
+            }
+
+            // Secret Key
+            let sk = config.bucketSource.config.secretAccessKey;
+            if (sk && !sk.startsWith('{{VAULT:')) {
+                if (sk.includes('{{VAULT:')) {
+                    sk = sk.replace(/{{VAULT:[^}]+}}/g, '');
+                }
+                if (sk.length > 0) {
+                    secretsToStore['bucket_secret_key'] = sk;
+                    config.bucketSource.config.secretAccessKey = '{{VAULT:bucket_secret_key}}';
+                }
+            }
+        }
+
+        // 3. Integrations (AWS)
+        if (config.integrations && config.integrations.aws) {
+            // Access Key
+            let ak = config.integrations.aws.accessKeyId;
+            if (ak && !ak.startsWith('{{VAULT:')) {
+                if (ak.includes('{{VAULT:')) {
+                    ak = ak.replace(/{{VAULT:[^}]+}}/g, '');
+                }
+                if (ak.length > 0) {
+                    secretsToStore['aws_access_key'] = ak;
+                    config.integrations.aws.accessKeyId = '{{VAULT:aws_access_key}}';
+                }
+            }
+
+            // Secret Key
+            let sk = config.integrations.aws.secretAccessKey;
+            if (sk && !sk.startsWith('{{VAULT:')) {
+                if (sk.includes('{{VAULT:')) {
+                    sk = sk.replace(/{{VAULT:[^}]+}}/g, '');
+                }
+                if (sk.length > 0) {
+                    secretsToStore['aws_secret_key'] = sk;
+                    config.integrations.aws.secretAccessKey = '{{VAULT:aws_secret_key}}';
+                }
+            }
+        }
+
+        // 4. Write Secrets to Vault if any
+        if (Object.keys(secretsToStore).length > 0) {
+            console.log(`[APPS] Moving ${Object.keys(secretsToStore).length} secrets to Vault for ${appKey}`);
+            await secretsService.writeAppSecrets(appKey, secretsToStore);
+        }
+        // ------------------------------
 
         const filename = `apps/${appKey}/config.json`;
         
@@ -65,39 +177,35 @@ exports.saveAppConfig = async (req, res) => {
         const routePath = `/apps/${appKey}`;
 
         const upsertQuery = `
-            MERGE Adminator_Apps AS target
-            USING (SELECT @AppKey AS AppKey) AS source
-            ON (target.AppKey = source.AppKey)
-            WHEN MATCHED THEN
-                UPDATE SET AppName = @AppName, Description = @Description, RoutePath = @RoutePath, IsActive = 1
-            WHEN NOT MATCHED THEN
-                INSERT (AppKey, AppName, Description, RoutePath, IsActive)
-                VALUES (@AppKey, @AppName, @Description, @RoutePath, 1);
+            INSERT INTO adminator_apps (app_key, app_name, description, route_path, is_active)
+            VALUES ($1, $2, $3, $4, true)
+            ON CONFLICT (app_key) 
+            DO UPDATE SET 
+                app_name = EXCLUDED.app_name,
+                description = EXCLUDED.description,
+                route_path = EXCLUDED.route_path,
+                is_active = true
+            RETURNING app_id
         `;
 
-        await executeQuery(upsertQuery, [
-            { name: 'AppKey', type: TYPES.NVarChar, value: appKey },
-            { name: 'AppName', type: TYPES.NVarChar, value: appName },
-            { name: 'Description', type: TYPES.NVarChar, value: description },
-            { name: 'RoutePath', type: TYPES.NVarChar, value: routePath }
-        ]);
+        const upsertResult = await pool.query(upsertQuery, [appKey, appName, description, routePath]);
+        const appId = upsertResult.rows[0].app_id;
 
         // 4. Ensure Administrator Access
-        const accessQuery = `
-            DECLARE @AppId INT = (SELECT AppId FROM Adminator_Apps WHERE AppKey = @AppKey);
-            DECLARE @ProfileId INT = (SELECT ProfileId FROM Adminator_AccessProfiles WHERE ProfileName = 'Administrator');
+        // Find Administrator profile
+        const adminProfileQuery = `SELECT profile_id FROM adminator_access_profiles WHERE profile_name = 'Administrator'`;
+        const adminProfileResult = await pool.query(adminProfileQuery);
+        
+        if (adminProfileResult.rows.length > 0) {
+            const profileId = adminProfileResult.rows[0].profile_id;
             
-            IF @AppId IS NOT NULL AND @ProfileId IS NOT NULL
-            BEGIN
-                IF NOT EXISTS (SELECT 1 FROM Adminator_ProfileAppAccess WHERE ProfileId = @ProfileId AND AppId = @AppId)
-                BEGIN
-                    INSERT INTO Adminator_ProfileAppAccess (ProfileId, AppId) VALUES (@ProfileId, @AppId);
-                END
-            END
-        `;
-        await executeQuery(accessQuery, [
-            { name: 'AppKey', type: TYPES.NVarChar, value: appKey }
-        ]);
+            const accessQuery = `
+                INSERT INTO adminator_profile_apps (profile_id, app_id)
+                VALUES ($1, $2)
+                ON CONFLICT (profile_id, app_id) DO NOTHING
+            `;
+            await pool.query(accessQuery, [profileId, appId]);
+        }
         
         res.json({ message: 'Configuration saved and app registered successfully', path: `${BUCKET_NAME}/${filename}` });
     } catch (error) {
@@ -197,19 +305,19 @@ exports.deleteAppConfig = async (req, res) => {
         }
 
         // 2. Delete from Database
-        const deleteQuery = `
-            DECLARE @AppId INT = (SELECT AppId FROM Adminator_Apps WHERE AppKey = @AppKey);
-            
-            IF @AppId IS NOT NULL
-            BEGIN
-                DELETE FROM Adminator_ProfileAppAccess WHERE AppId = @AppId;
-                DELETE FROM Adminator_Apps WHERE AppId = @AppId;
-            END
-        `;
+        // Get App ID first
+        const appIdQuery = `SELECT app_id FROM adminator_apps WHERE app_key = $1`;
+        const appIdResult = await pool.query(appIdQuery, [appKey]);
         
-        await executeQuery(deleteQuery, [
-            { name: 'AppKey', type: TYPES.NVarChar, value: appKey }
-        ]);
+        if (appIdResult.rows.length > 0) {
+            const appId = appIdResult.rows[0].app_id;
+            
+            // Delete access
+            await pool.query(`DELETE FROM adminator_profile_apps WHERE app_id = $1`, [appId]);
+            
+            // Delete app
+            await pool.query(`DELETE FROM adminator_apps WHERE app_id = $1`, [appId]);
+        }
 
         res.json({ message: 'App deleted successfully from S3 and Database' });
     } catch (error) {
@@ -237,11 +345,8 @@ exports.uploadAppIcon = async (req, res) => {
 
         await s3Client.send(command);
 
-        const updateIconQuery = `UPDATE Adminator_Apps SET AppIcon = @AppIcon WHERE AppKey = @AppKey`;
-        await executeQuery(updateIconQuery, [
-            { name: 'AppIcon', type: TYPES.NVarChar, value: s3Key },
-            { name: 'AppKey', type: TYPES.NVarChar, value: appKey }
-        ]);
+        const updateIconQuery = `UPDATE adminator_apps SET app_icon = $1 WHERE app_key = $2`;
+        await pool.query(updateIconQuery, [s3Key, appKey]);
 
         res.json({ message: 'Icon uploaded successfully', path: s3Key });
     } catch (error) {

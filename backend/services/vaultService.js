@@ -108,6 +108,26 @@ class VaultService {
             throw err;
         }
     }
+
+    /**
+     * Writes a secret to KV v2 mount.
+     * @param {string} path - Path after kv/data/, e.g., "apps/my-app/config"
+     * @param {object} data - The secret data object
+     */
+    async writeSecret(path, data) {
+        const client = await this.getClient();
+        try {
+            const mountPoint = process.env.VAULT_KV_MOUNT || 'kv';
+            const fullPath = `/v1/${mountPoint}/data/${path}`;
+            
+            // KV v2 write expects { data: { ... } }
+            await client.post(fullPath, { data });
+            console.log(`[Vault] Successfully wrote secret to ${path}`);
+        } catch (err) {
+            console.error(`[Vault] Error writing to ${path}:`, err.message);
+            throw err;
+        }
+    }
 }
 
 // Singleton instance

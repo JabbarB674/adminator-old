@@ -1,4 +1,4 @@
- const { executeQuery } = require('../config/db');
+const { pool } = require('../config/pg');
 
 exports.executeQuery = async (req, res) => {
     const { query } = req.body;
@@ -18,17 +18,13 @@ exports.executeQuery = async (req, res) => {
     }
 
     try {
-        // executeQuery returns an array of result sets (arrays of rows)
-        const resultSets = await executeQuery(query);
+        const result = await pool.query(query);
         
-        // Flatten if single result set, or return first one as primary recordset
-        const recordset = resultSets.length > 0 ? resultSets[0] : [];
-
-        console.log(`[DB_DIRECT] Query executed successfully. Rows: ${recordset.length}`);
+        console.log(`[DB_DIRECT] Query executed successfully. Rows: ${result.rowCount}`);
 
         res.json({
-            rowsAffected: [recordset.length], // Approximation since our db wrapper doesn't return affected count
-            recordset: recordset
+            rowsAffected: [result.rowCount],
+            recordset: result.rows
         });
     } catch (err) {
         console.error('[DB_DIRECT] Query execution failed:', err);
@@ -38,9 +34,16 @@ exports.executeQuery = async (req, res) => {
 
 exports.getApps = async (req, res) => {
     try {
-        const result = await executeQuery('SELECT * FROM Adminator_Apps');
-        const apps = result.length > 0 ? result[0] : [];
-        res.json(apps);
+        const result = await pool.query(`
+            SELECT 
+                app_id AS "AppId", 
+                app_name AS "AppName", 
+                description AS "Description", 
+                icon AS "Icon", 
+                path AS "Path" 
+            FROM adminator_apps
+        `);
+        res.json(result.rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

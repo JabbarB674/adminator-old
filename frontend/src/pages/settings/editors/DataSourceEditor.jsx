@@ -148,9 +148,25 @@ export default function DataSourceEditor({ dataSource, onChange }) {
                 <label>Password</label>
                 <input 
                     type="password" 
-                    value={data.config.password} 
+                    autoComplete="new-password"
+                    data-lpignore="true"
+                    value={data.config.password && data.config.password.startsWith('{{VAULT:') ? '' : data.config.password} 
                     onChange={(e) => handleConfigChange('password', e.target.value)}
-                    placeholder="••••••••"
+                    placeholder={data.config.password && data.config.password.startsWith('{{VAULT:') ? 'Stored in Vault (Type to overwrite)' : 'Enter password'}
+                    style={data.config.password && data.config.password.startsWith('{{VAULT:') ? { fontStyle: 'italic', color: '#aaa' } : {}}
+                    onFocus={(e) => {
+                        // If it's a placeholder, clear it on focus so user can type new one? 
+                        // No, value is already empty string visually.
+                        // But we need to ensure that if they DON'T type anything, the placeholder remains in the state.
+                        // The current logic does that: value is derived from state. 
+                        // If state has placeholder, input shows empty. 
+                        // If user types 'a', onChange fires, state becomes 'a'. Placeholder gone.
+                        // If user deletes 'a', state becomes ''. 
+                        // PROBLEM: If state becomes '', we lose the placeholder!
+                        // We need to distinguish between "User cleared the password" and "User didn't touch the placeholder".
+                        // Actually, if the user clears the field, they probably want to remove the password.
+                        // But if they just tab through, we want to keep the placeholder.
+                    }}
                 />
             </div>
         </div>

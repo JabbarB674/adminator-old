@@ -74,7 +74,7 @@ async function signAwsRequest({ appId, method, url, region, service, assumeRoleA
     const signer = new SignatureV4({
         credentials,
         region: region || baseCreds.region,
-        service: service,
+        service: service || 'execute-api',
         sha256: Sha256,
     });
 
