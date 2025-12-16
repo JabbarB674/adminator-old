@@ -210,21 +210,56 @@ exports.runAction = async (req, res) => {
             }
 
             let requestHeaders = { ...(action.headers || {}), ...(req.body.dynamicHeaders || {}) };
+            const method = (action.method || 'GET').toUpperCase();
+
+            // Ensure body consistency between Signer and Axios
+            let finalBody = payload;
+            
+            if (method === 'GET' || method === 'HEAD') {
+                finalBody = '';
+            } else if (typeof payload === 'object' && payload !== null && Object.keys(payload).length > 0) {
+                finalBody = JSON.stringify(payload);
+                if (!requestHeaders['Content-Type'] && !requestHeaders['content-type']) {
+                    requestHeaders['Content-Type'] = 'application/json';
+                }
+            } else if (Object.keys(payload).length === 0 && (method === 'POST' || method === 'PUT')) {
+                 // Empty body for POST/PUT
+                 finalBody = '{}';
+                 if (!requestHeaders['Content-Type'] && !requestHeaders['content-type']) {
+                    requestHeaders['Content-Type'] = 'application/json';
+                }
+            }
 
             if (action.authType === 'aws_iam') {
                 try {
-                    console.log(`[RemoteDB] Signing request with AWS SigV4 (Region: ${action.awsRegion}, Service: ${action.awsService})`);
+                    // If region/service not specified in Action, let the signer resolve it from Integration defaults
+                    let targetRegion = action.awsRegion;
+                    if (!targetRegion && appConfig.integrations?.aws?.region) {
+                        targetRegion = appConfig.integrations.aws.region;
+                    }
+                    
+                    const targetService = action.awsService || undefined;
+
+                    console.log(`[RemoteDB] Signing request with AWS SigV4 (Region: ${targetRegion || 'auto'}, Service: ${targetService || 'auto'})`);
                     const signedHeaders = await signAwsRequest({
                         appId: appKey,
-                        method: action.method || 'GET',
+                        method: method,
                         url: action.url,
-                        region: action.awsRegion,
-                        service: action.awsService,
+                        region: targetRegion,
+                        service: targetService,
                         assumeRoleArn: action.awsAssumeRoleArn,
                         headers: requestHeaders,
-                        body: payload
+                        body: finalBody
                     });
                     requestHeaders = signedHeaders;
+                    
+                    // Remove 'host' header to avoid conflicts with Axios/Node auto-generated Host header
+                    // The signature is already calculated with the correct host.
+                    delete requestHeaders['host'];
+                    delete requestHeaders['Host'];
+
+                    console.log('[RemoteDB] Final Headers:', JSON.stringify(requestHeaders, null, 2));
+
                 } catch (signErr) {
                     console.error(`[RemoteDB] AWS Signing failed: ${signErr.message}`);
                     return res.status(500).json({ error: 'AWS Signing Failed', details: signErr.message });
@@ -233,10 +268,10 @@ exports.runAction = async (req, res) => {
 
             try {
                 const response = await axios({
-                    method: action.method || 'GET',
+                    method: method,
                     url: action.url,
                     headers: requestHeaders,
-                    data: payload
+                    data: finalBody
                 });
                 console.log(`[RemoteDB] HTTP action success: ${response.status}`);
                 return res.json({ 
@@ -246,6 +281,9 @@ exports.runAction = async (req, res) => {
                 });
             } catch (httpErr) {
                 console.error(`[RemoteDB] HTTP action failed: ${httpErr.message}`);
+                if (httpErr.response && httpErr.response.data) {
+                    console.error('[RemoteDB] Upstream Error Body:', JSON.stringify(httpErr.response.data, null, 2));
+                }
                 return res.status(502).json({ 
                     error: 'Upstream Request Failed', 
                     details: httpErr.message,

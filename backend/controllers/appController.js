@@ -119,6 +119,7 @@ exports.saveAppConfig = async (req, res) => {
         }
 
         // 3. Integrations (AWS)
+        let awsIntegrationSecrets = {};
         if (config.integrations && config.integrations.aws) {
             // Access Key
             let ak = config.integrations.aws.accessKeyId;
@@ -128,6 +129,7 @@ exports.saveAppConfig = async (req, res) => {
                 }
                 if (ak.length > 0) {
                     secretsToStore['aws_access_key'] = ak;
+                    awsIntegrationSecrets['access_key_id'] = ak;
                     config.integrations.aws.accessKeyId = '{{VAULT:aws_access_key}}';
                 }
             }
@@ -140,8 +142,21 @@ exports.saveAppConfig = async (req, res) => {
                 }
                 if (sk.length > 0) {
                     secretsToStore['aws_secret_key'] = sk;
+                    awsIntegrationSecrets['secret_access_key'] = sk;
                     config.integrations.aws.secretAccessKey = '{{VAULT:aws_secret_key}}';
                 }
+            }
+
+            // Region (Store in Vault too for easier access by signer)
+            if (config.integrations.aws.region) {
+                secretsToStore['aws_region'] = config.integrations.aws.region;
+                awsIntegrationSecrets['region'] = config.integrations.aws.region;
+            }
+
+            // Write to Integration Path if we have new secrets
+            if (Object.keys(awsIntegrationSecrets).length > 0) {
+                 console.log(`[APPS] Syncing AWS secrets to Integration path for ${appKey}`);
+                 await secretsService.writeIntegrationSecrets(appKey, 'aws', awsIntegrationSecrets);
             }
         }
 

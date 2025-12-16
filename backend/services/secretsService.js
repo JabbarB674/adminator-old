@@ -34,15 +34,21 @@ class SecretsService {
             const secretKey = secret?.aws_secret_key || secret?.bucket_secret_key;
 
             if (accessKey && secretKey) {
+                const region = secret?.aws_region || process.env.AWS_REGION || 'us-east-1';
+                console.log(`[Secrets] Found AWS Creds in generic secrets. Region: ${region}`);
                 return {
                     accessKeyId: accessKey,
                     secretAccessKey: secretKey,
-                    region: secret?.aws_region || process.env.AWS_REGION || 'us-east-1'
+                    region: region
                 };
             }
         } catch (err) { /* ignore */ }
 
         // 3. Fallback to Env (Dev Mode Only)
+        // NOTE: We only fallback if we are NOT in production AND we failed to find secrets above.
+        // However, if the user explicitly requested AWS SigV4, we should probably fail if no secrets found
+        // rather than silently using the server's env vars which might be for a different account.
+        // But for now, we keep this for backward compatibility with local dev.
         if (process.env.NODE_ENV !== 'production') {
             console.log(`[Secrets] Using ENV fallback for AWS Creds (App: ${appId})`);
             return {
@@ -52,7 +58,25 @@ class SecretsService {
             };
         }
 
-        throw new Error(`No AWS Credentials found for app ${appId}`);
+        throw new Error(`No AWS Credentials found for app ${appId} in Vault (checked integrations/aws/base and secrets)`);
+    }
+
+    /**
+     * Writes integration-specific secrets.
+     * @param {string} appId 
+     * @param {string} integrationType - e.g. 'aws'
+     * @param {object} secrets 
+     */
+    async writeIntegrationSecrets(appId, integrationType, secrets) {
+        const secretPath = `apps/${appId}/integrations/${integrationType}/base`;
+        // Read existing to merge
+        let existing = {};
+        try {
+            existing = await vaultService.readSecret(secretPath) || {};
+        } catch (e) { /* ignore */ }
+
+        const merged = { ...existing, ...secrets };
+        await vaultService.writeSecret(secretPath, merged);
     }
 
     /**

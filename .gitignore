@@ -2,3 +2,5 @@ node_modules/
 .serverless/
 .env
 reference/
+tasty-customers-lamda/
+.gitignore
