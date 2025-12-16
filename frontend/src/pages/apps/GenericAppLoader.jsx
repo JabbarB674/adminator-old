@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
@@ -10,6 +10,7 @@ export default function GenericAppLoader() {
   const { appKey } = useParams();
   const { user } = useAuth();
   const { showNotification } = useNotification();
+  const fileInputRef = useRef(null);
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -271,15 +272,91 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
 
     const action = getActionInfo(widget.actionId);
 
+    const uploadLocalFile = async (file) => {
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('jwt');
+
+            // 1. Convert to Base64
+            const toBase64 = (file) => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+
+            const base64Full = await toBase64(file);
+            // Strip prefix (data:image/xyz;base64,)
+            const base64Data = base64Full.split(',')[1];
+            
+            // 2. Upload to MinIO
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('path', `apps/${appKey}/uploads/`); 
+            
+            const uploadRes = await fetch(apiUrl('/upload'), {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+            
+            if (!uploadRes.ok) throw new Error('Failed to upload local file');
+            const uploadData = await uploadRes.json();
+            const path = uploadData.key || uploadData.path;
+            
+            // Update State
+            setSelectedFile({ type: 'uploaded', path: path, name: file.name });
+            
+            // 3. Update Input JSON
+            try {
+                let currentJson = input ? JSON.parse(input) : {};
+                currentJson.fileBase = base64Data;
+                currentJson.fileName = file.name;
+                currentJson.attachmentPath = path; // Keep this for reference
+                setInput(JSON.stringify(currentJson, null, 2));
+            } catch (e) {
+                // If not JSON, append to text?
+                if (!input) {
+                    setInput(JSON.stringify({ 
+                        fileBase: base64Data,
+                        fileName: file.name,
+                        attachmentPath: path
+                    }, null, 2));
+                } else {
+                    // Leave it, user might be typing raw text
+                }
+            }
+        } catch (err) {
+            setError('File upload failed: ' + err.message);
+            setSelectedFile(null);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleFileSelect = (e) => {
         if (e.target.files[0]) {
-            setSelectedFile({ type: 'local', file: e.target.files[0] });
+            const file = e.target.files[0];
+            // Show loading state immediately
+            setSelectedFile({ type: 'local', name: file.name, uploading: true });
+            uploadLocalFile(file);
         }
     };
 
     const handleMinioSelect = (path) => {
         setSelectedFile({ type: 'minio', path: path });
         setShowBucketModal(false);
+        
+        // Update Input JSON
+        try {
+            let currentJson = input ? JSON.parse(input) : {};
+            currentJson.attachmentPath = path;
+            setInput(JSON.stringify(currentJson, null, 2));
+        } catch (e) {
+            if (!input) {
+                setInput(JSON.stringify({ attachmentPath: path }, null, 2));
+            }
+        }
     };
 
     const handleRun = async () => {
@@ -293,7 +370,6 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
         setError(null);
         try {
             const token = localStorage.getItem('jwt');
-            let filePath = null;
             let dynamicHeaders = {};
 
             // 1. Dynamic Authentication
@@ -329,43 +405,23 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
                 }
             }
 
-            // 2. Handle File Upload if needed
-            if (selectedFile) {
-                if (selectedFile.type === 'local') {
-                    // Upload to Local Minio (Adminator Storage)
-                    const formData = new FormData();
-                    formData.append('file', selectedFile.file);
-                    formData.append('path', `apps/${appKey}/uploads/`); // App-specific folder in local storage
-                    
-                    const uploadRes = await fetch(apiUrl('/upload'), {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}` },
-                        body: formData
-                    });
-                    
-                    if (!uploadRes.ok) throw new Error('Failed to upload local file');
-                    const uploadData = await uploadRes.json();
-                    filePath = uploadData.key || uploadData.path; 
-                } else {
-                    filePath = selectedFile.path;
-                }
-            }
-            
+            // 2. Prepare Payload
+            // We trust the 'input' field contains the final JSON structure now, 
+            // including the attachmentPath if a file was selected.
             let payload = {};
             if (input) {
                 try {
-                    // Replace {{filePath}} placeholder if present
-                    let processedInput = input;
-                    if (filePath) {
-                        processedInput = processedInput.replace('{{filePath}}', filePath);
-                    }
-                    payload = JSON.parse(processedInput);
+                    payload = JSON.parse(input);
                 } catch (e) {
-                    payload = { input: input.replace('{{filePath}}', filePath || '') };
+                    // Fallback for raw text
+                    payload = { input: input };
+                    // If we have a file but it wasn't in the text (because text wasn't JSON), inject it
+                    if (selectedFile && selectedFile.path) {
+                        payload.attachmentPath = selectedFile.path;
+                    }
                 }
-            } else if (filePath) {
-                // If no input but file exists, maybe just send it as filePath
-                payload = { filePath };
+            } else if (selectedFile && selectedFile.path) {
+                payload = { attachmentPath: selectedFile.path };
             }
 
             const res = await fetch(apiUrl(`/apps/${appKey}/actions/${widget.actionId}/run`), {
@@ -426,7 +482,7 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
                                 </button>
                                 {selectedFile && (
                                     <span style={{ fontSize: '0.8rem', color: '#4caf50', marginLeft: '0.5rem' }}>
-                                        {selectedFile.type === 'local' ? `📄 ${selectedFile.file.name}` : `☁️ ${selectedFile.path}`}
+                                        {(selectedFile.type === 'local' || selectedFile.type === 'uploaded') ? `📄 ${selectedFile.name}` : `☁️ ${selectedFile.path}`}
                                         <button 
                                             onClick={() => setSelectedFile(null)}
                                             style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', marginLeft: '0.5rem' }}

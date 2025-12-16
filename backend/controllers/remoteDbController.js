@@ -190,10 +190,38 @@ exports.runAction = async (req, res) => {
         if (action.type === 'http') {
             console.log(`[RemoteDB] Executing HTTP action: ${action.method} ${action.url}`);
             
-            // Handle File Attachment (Inject Base64)
-            if (payload && payload.filePath) {
+            // Handle File Attachment
+            // Case 1: Frontend sends Base64 directly (New Method)
+            if (payload && payload.fileBase) {
+                console.log('[RemoteDB] Using provided fileBase from payload');
+                payload.fileBase64 = payload.fileBase;
+                delete payload.fileBase; // Clean up if Lambda is strict, or keep it.
+                
+                // Ensure fileName exists
+                if (!payload.fileName && payload.attachmentPath) {
+                    payload.fileName = payload.attachmentPath.split('/').pop();
+                }
+            }
+            // Case 2: Frontend sends attachmentPath (Old Method - Fetch from MinIO)
+            else if (req.body.attachmentPath) {
                 try {
-                    console.log(`[RemoteDB] Fetching file from storage: ${payload.filePath}`);
+                    console.log(`[RemoteDB] Fetching file from storage: ${req.body.attachmentPath}`);
+                    const fileCommand = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: req.body.attachmentPath });
+                    const fileResponse = await s3Client.send(fileCommand);
+                    const fileBuffer = await fileResponse.Body.transformToByteArray();
+                    const base64File = Buffer.from(fileBuffer).toString('base64');
+                    
+                    // Inject into payload
+                    payload.fileBase64 = base64File;
+                    payload.fileName = req.body.attachmentPath.split('/').pop();
+                } catch (fileErr) {
+                    console.error(`[RemoteDB] Failed to fetch file attachment: ${fileErr.message}`);
+                }
+            } 
+            // Case 3: Legacy payload.filePath
+            else if (payload && payload.filePath) {
+                try {
+                    console.log(`[RemoteDB] Fetching file from storage (legacy): ${payload.filePath}`);
                     const fileCommand = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: payload.filePath });
                     const fileResponse = await s3Client.send(fileCommand);
                     const fileBuffer = await fileResponse.Body.transformToByteArray();
@@ -202,10 +230,8 @@ exports.runAction = async (req, res) => {
                     // Inject into payload
                     payload.fileBase64 = base64File;
                     payload.fileName = payload.filePath.split('/').pop();
-                    // We keep filePath for reference, but the Lambda should use fileBase64
                 } catch (fileErr) {
                     console.error(`[RemoteDB] Failed to fetch file attachment: ${fileErr.message}`);
-                    // We continue, but the Lambda might fail if it expects the file
                 }
             }
 

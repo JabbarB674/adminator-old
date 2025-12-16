@@ -1,0 +1,56 @@
+service: tasty-customers
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ap-southeast-2
+  timeout: 30
+  iam:
+    role: "arn:aws:iam::624921803801:role/k3s-dev_role"
+  vpc:
+    securityGroupIds:
+      - sg-0626d55f51ad503d5 # use the fucking cipia one idk anymore
+    subnetIds:
+      - subnet-0637ad5e
+      - subnet-5823c83e
+      - subnet-09886c41
+    # Ensure we are using public subnets if we want IGW access, 
+    # OR ensure we have a VPC Endpoint for S3 if we are private.
+    # Based on route table rtb-5a14813c, the main route table has an IGW (igw-2e3a2a4a).
+    # If these subnets use the main route table, they are public.
+    # However, Lambda in a public subnet DOES NOT get a public IP by default, so it cannot use the IGW.
+    # It needs a NAT Gateway or a VPC Endpoint.
+    # Since we don't want to pay for NAT, we MUST use a VPC Endpoint for S3.
+
+plugins:
+  - serverless-offline
+
+functions:
+  loginTest:
+    handler: src/loginTest.handler
+    events:
+      - http:
+          path: loginTest
+          method: any
+          cors: true
+          authorizer: aws_iam
+  getUsers:
+    handler: src/getUsers.handler
+    events:
+      - http:
+          path: getUsers
+          method: get
+          cors: true
+          authorizer: aws_iam
+  updatePackImage:
+    handler: src/updatePackImage.handler
+    events:
+      - http:
+          path: updatePackImage
+          method: post
+          cors: true
+          authorizer: aws_iam
+
+custom:
+  serverless-offline:
+    httpPort: 5001
