@@ -1,0 +1,198 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: adminator-dev-frontend
+  namespace: default
+  labels:
+    app: adminator-dev
+spec:
+  selector:
+    app: adminator-dev
+  type: NodePort
+  ports:
+    - name: http-frontend
+      protocol: TCP
+      port: 80            # Cluster port
+      targetPort: 3000    # React dev server
+      nodePort: 30200     # EXTERNAL: http://192.168.100.51:30200/
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: adminator-dev-backend
+  namespace: default
+  labels:
+    app: adminator-dev
+spec:
+  selector:
+    app: adminator-dev
+  type: NodePort
+  ports:
+    - name: http-backend
+      protocol: TCP
+      port: 80            # Cluster port
+      targetPort: 5000    # Express server
+      nodePort: 30201     # EXTERNAL: http://192.168.100.51:30201/
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adminator-dev
+  namespace: default
+  labels:
+    app: adminator-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: adminator-dev
+  template:
+    metadata:
+      labels:
+        app: adminator-dev
+    spec:
+      # Pin to infra node
+      nodeSelector:
+        nodepool: infra
+      tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "infra"
+          effect: "NoSchedule"
+
+      ###############################################
+      # INIT: clone repo + patch .env files
+      ###############################################
+      initContainers:
+        - name: git-clone
+          image: alpine/git:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "[init] Starting git clone for adminator-dev"
+
+              # Ensure SSH key exists (mounted from secret)
+              if [ ! -f /etc/git-secret/ssh-privatekey ]; then
+                echo "[init] ❌ Missing private key at /etc/git-secret/ssh-privatekey"
+                exit 1
+              fi
+
+              mkdir -p /root/.ssh
+              cp /etc/git-secret/ssh-privatekey /root/.ssh/id_rsa
+              chmod 600 /root/.ssh/id_rsa
+              ssh-keyscan github.com >> /root/.ssh/known_hosts
+
+              mkdir -p /repo
+              echo "[init] 🧹 Cleaning /repo before clone"
+              find /repo -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+
+              echo "[init] Cloning repository using deploy key"
+              # Replace with your actual repo URL
+              git clone --single-branch -- git@github.com:jabbarb/adminator.git /repo \
+                || { echo "[init] ❌ Clone failed (check deploy key access)"; exit 1; }
+
+              echo "[init] ✅ Clone complete"
+
+              # 🔧 Patch Frontend .env
+              if [ -d /repo/frontend ]; then
+                echo "[init] 🔧 Writing .env for frontend"
+                # Point to the NodePort of the backend (External Access)
+                echo "REACT_APP_API_URL=http://192.168.100.51:30201" > /repo/frontend/.env
+                echo "[init]   -> wrote /repo/frontend/.env"
+              fi
+
+              # 🔧 Patch Backend .env
+              if [ -d /repo/backend ]; then
+                echo "[init] 🔧 Writing .env for backend"
+                cat <<EOF > /repo/backend/.env
+              PORT=5000
+              NODE_ENV=development
+              
+              # Database (Internal K8s DNS)
+              DATABASE_URL=postgres://admin:password@postgres.default.svc.cluster.local:5432/adminator_system
+              
+              # MinIO (Internal K8s DNS)
+              S3_ENDPOINT=http://minio.default.svc.cluster.local:9000
+              S3_BUCKET_NAME=adminator-storage
+              S3_REGION=us-east-1
+              S3_ACCESS_KEY=minioadmin
+              S3_SECRET_KEY=minioadmin
+              
+              # Vault (Internal K8s DNS)
+              VAULT_ADDR=http://vault.default.svc.cluster.local:8200
+              VAULT_ROLE=adminator
+              # No token needed - uses K8s Service Account
+              EOF
+                echo "[init]   -> wrote /repo/backend/.env"
+              fi
+
+          volumeMounts:
+            - name: code
+              mountPath: /repo
+            - name: git-secret-volume
+              mountPath: /etc/git-secret
+              readOnly: true
+
+      ###############################################
+      # MAIN CONTAINERS: backend + frontend
+      ###############################################
+      containers:
+        ########################################
+        # Backend: Node.js Express (port 5000)
+        ########################################
+        - name: backend
+          image: node:18-bullseye
+          workingDir: /repo/backend
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "[backend] Installing dependencies"
+              npm install
+              echo "[backend] Starting Server on port 5000"
+              npm start
+          ports:
+            - containerPort: 5000
+          volumeMounts:
+            - name: code
+              mountPath: /repo
+
+        ########################################
+        # Frontend: React dev server (port 3000)
+        ########################################
+        - name: frontend
+          image: node:18-bullseye
+          workingDir: /repo/frontend
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "[frontend] Installing dependencies"
+              npm install
+              echo "[frontend] Starting React dev server on 0.0.0.0:3000"
+              # React scripts default to 3000
+              npm start
+          env:
+            - name: BROWSER
+              value: "none"
+            - name: WDS_SOCKET_PORT
+              value: "30200" # Fix for Hot Reloading behind NodePort
+          ports:
+            - containerPort: 3000
+          volumeMounts:
+            - name: code
+              mountPath: /repo
+
+      ###############################################
+      # VOLUMES
+      ###############################################
+      volumes:
+        - name: code
+          emptyDir: {}
+        - name: git-secret-volume
+          secret:
+            secretName: adminator-github-key # Ensure this secret exists
