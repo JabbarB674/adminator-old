@@ -342,6 +342,52 @@ export default function ActionEditor({ actions, onChange }) {
                       )}
                   </div>
 
+                  {/* Payload Configuration */}
+                  <div style={{ marginBottom: '1rem', background: '#1a1a1a', padding: '1rem', borderRadius: '4px', border: '1px solid #333' }}>
+                      <label style={{fontSize: '0.8rem', color: '#aaa', fontWeight: 'bold', display: 'block', marginBottom: '0.5rem'}}>Payload Configuration</label>
+                      
+                      <div style={{ marginBottom: '1rem' }}>
+                          <label style={{fontSize: '0.8rem', color: '#888', display: 'block', marginBottom: '0.25rem'}}>
+                              JSON Template (Optional)
+                          </label>
+                          <textarea
+                              value={typeof action.payloadTemplate === 'string' ? action.payloadTemplate : JSON.stringify(action.payloadTemplate || {}, null, 2)}
+                              onChange={(e) => handleUpdateAction(aIndex, 'payloadTemplate', e.target.value)}
+                              rows={5}
+                              style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.85rem', background: '#111', color: '#dcdcaa', border: '1px solid #444', borderRadius: '4px' }}
+                              placeholder={`{
+  "key": "{{variable}}",
+  "static": "value"
+}`}
+                          />
+                          <p style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.25rem' }}>
+                              Use <code>{`{{variableName}}`}</code> to create input fields in the UI.
+                          </p>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '2rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <input 
+                                type="checkbox" 
+                                id={`hideJson-${aIndex}`}
+                                checked={action.hideJson || false}
+                                onChange={(e) => handleUpdateAction(aIndex, 'hideJson', e.target.checked)}
+                              />
+                              <label htmlFor={`hideJson-${aIndex}`} style={{ color: '#ddd', cursor: 'pointer', fontSize: '0.9rem' }}>Hide Raw JSON</label>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <input 
+                                type="checkbox" 
+                                id={`lockJson-${aIndex}`}
+                                checked={action.lockJson || false}
+                                onChange={(e) => handleUpdateAction(aIndex, 'lockJson', e.target.checked)}
+                              />
+                              <label htmlFor={`lockJson-${aIndex}`} style={{ color: '#ddd', cursor: 'pointer', fontSize: '0.9rem' }}>Lock Raw JSON (Read Only)</label>
+                          </div>
+                      </div>
+                  </div>
+
                   <div style={{ marginBottom: '1rem', background: '#1a1a1a', padding: '1rem', borderRadius: '4px', border: '1px solid #333' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                         <label style={{fontSize: '0.8rem', color: '#aaa', fontWeight: 'bold'}}>HTTP Headers</label>

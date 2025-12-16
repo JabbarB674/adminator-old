@@ -6,6 +6,20 @@ import { apiUrl } from '../../utils/api';
 import DataGrid from '../../components/widgets/DataGrid';
 import BucketExplorer from '../../components/widgets/BucketExplorer';
 
+const safeJsonParse = (str) => {
+    try {
+        return JSON.parse(str);
+    } catch (e) {
+        try {
+            // Try to fix trailing commas
+            const fixed = str.replace(/,\s*([\]}])/g, '$1');
+            return JSON.parse(fixed);
+        } catch (e2) {
+            throw e;
+        }
+    }
+};
+
 export default function GenericAppLoader() {
   const { appKey } = useParams();
   const { user } = useAuth();
@@ -272,6 +286,48 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
 
     const action = getActionInfo(widget.actionId);
 
+    // Template Variables Logic
+    const [templateValues, setTemplateValues] = useState({});
+
+    const variables = React.useMemo(() => {
+        if (!action?.payloadTemplate) return [];
+        const str = typeof action.payloadTemplate === 'string' 
+            ? action.payloadTemplate 
+            : JSON.stringify(action.payloadTemplate);
+        const matches = [...str.matchAll(/{{([^}]+)}}/g)];
+        return [...new Set(matches.map(m => m[1]))];
+    }, [action]);
+
+    useEffect(() => {
+        if (action?.payloadTemplate) {
+            let templateStr = typeof action.payloadTemplate === 'string' 
+                ? action.payloadTemplate 
+                : JSON.stringify(action.payloadTemplate, null, 2);
+            
+            variables.forEach(v => {
+                const val = templateValues[v] || '';
+                templateStr = templateStr.split(`{{${v}}}`).join(val);
+            });
+
+            // Merge File Data if exists (persists across template edits)
+            if (selectedFile) {
+                try {
+                    const json = safeJsonParse(templateStr);
+                    if (selectedFile.base64) json.fileBase = selectedFile.base64;
+                    if (selectedFile.name) json.fileName = selectedFile.name;
+                    if (selectedFile.path) json.attachmentPath = selectedFile.path;
+                    templateStr = JSON.stringify(json, null, 2);
+                } catch (e) {
+                    console.warn('Template is not valid JSON, appending file data manually', e);
+                    // Fallback: If template is not valid JSON (e.g. empty strings), try to fix or append
+                    // This is a best-effort to show the file data even if the template is broken
+                }
+            }
+
+            setInput(templateStr);
+        }
+    }, [action, variables, templateValues, selectedFile]);
+
     const uploadLocalFile = async (file) => {
         setLoading(true);
         try {
@@ -304,29 +360,30 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
             const uploadData = await uploadRes.json();
             const path = uploadData.key || uploadData.path;
             
-            // Update State
-            setSelectedFile({ type: 'uploaded', path: path, name: file.name });
+            // Update State (Store base64 so it persists)
+            const newFileState = { type: 'uploaded', path: path, name: file.name, base64: base64Data };
+            setSelectedFile(newFileState);
             
-            // 3. Update Input JSON
-            try {
-                let currentJson = input ? JSON.parse(input) : {};
-                currentJson.fileBase = base64Data;
-                currentJson.fileName = file.name;
-                currentJson.attachmentPath = path; // Keep this for reference
-                setInput(JSON.stringify(currentJson, null, 2));
-            } catch (e) {
-                // If not JSON, append to text?
-                if (!input) {
+            // 3. Update Input JSON (Only if no template, otherwise useEffect handles it)
+            if (!action?.payloadTemplate) {
+                try {
+                    let currentJson = input ? safeJsonParse(input) : {};
+                    currentJson.fileBase = base64Data;
+                    currentJson.fileName = file.name;
+                    currentJson.attachmentPath = path; 
+                    setInput(JSON.stringify(currentJson, null, 2));
+                } catch (e) {
+                    // If input is empty or invalid, force create a valid JSON
                     setInput(JSON.stringify({ 
                         fileBase: base64Data,
                         fileName: file.name,
-                        attachmentPath: path
+                        attachmentPath: path,
+                        ...(input ? { _rawInput: input } : {}) // Preserve raw input if possible
                     }, null, 2));
-                } else {
-                    // Leave it, user might be typing raw text
                 }
             }
         } catch (err) {
+            console.error('Upload Error:', err);
             setError('File upload failed: ' + err.message);
             setSelectedFile(null);
         } finally {
@@ -344,17 +401,20 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
     };
 
     const handleMinioSelect = (path) => {
-        setSelectedFile({ type: 'minio', path: path });
+        const name = path.split('/').pop();
+        setSelectedFile({ type: 'minio', path: path, name: name });
         setShowBucketModal(false);
         
-        // Update Input JSON
-        try {
-            let currentJson = input ? JSON.parse(input) : {};
-            currentJson.attachmentPath = path;
-            setInput(JSON.stringify(currentJson, null, 2));
-        } catch (e) {
-            if (!input) {
-                setInput(JSON.stringify({ attachmentPath: path }, null, 2));
+        // Update Input JSON (Only if no template)
+        if (!action?.payloadTemplate) {
+            try {
+                let currentJson = input ? safeJsonParse(input) : {};
+                currentJson.attachmentPath = path;
+                setInput(JSON.stringify(currentJson, null, 2));
+            } catch (e) {
+                if (!input) {
+                    setInput(JSON.stringify({ attachmentPath: path }, null, 2));
+                }
             }
         }
     };
@@ -411,17 +471,20 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
             let payload = {};
             if (input) {
                 try {
-                    payload = JSON.parse(input);
+                    payload = safeJsonParse(input);
                 } catch (e) {
                     // Fallback for raw text
                     payload = { input: input };
-                    // If we have a file but it wasn't in the text (because text wasn't JSON), inject it
-                    if (selectedFile && selectedFile.path) {
-                        payload.attachmentPath = selectedFile.path;
-                    }
                 }
-            } else if (selectedFile && selectedFile.path) {
-                payload = { attachmentPath: selectedFile.path };
+            }
+            
+            // ALWAYS inject file data if selected, regardless of template or input state
+            // This ensures that even if the template didn't include it, or the user edited it out,
+            // or if the input is just raw text, the file is still attached.
+            if (selectedFile) {
+                if (selectedFile.base64) payload.fileBase = selectedFile.base64;
+                if (selectedFile.name) payload.fileName = selectedFile.name;
+                if (selectedFile.path) payload.attachmentPath = selectedFile.path;
             }
 
             const res = await fetch(apiUrl(`/apps/${appKey}/actions/${widget.actionId}/run`), {
@@ -461,9 +524,43 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
                             {action.description}
                         </div>
                     )}
+
+                    {variables.length > 0 && (
+                        <div style={{ marginTop: '1rem', background: '#1a1a1a', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444' }}>
+                            <label style={{ display: 'block', fontSize: '0.8rem', color: '#888', marginBottom: '0.5rem' }}>Template Variables</label>
+                            <div style={{ display: 'grid', gap: '0.5rem' }}>
+                                {variables.map(v => (
+                                    <div key={v}>
+                                        <label style={{ fontSize: '0.75rem', color: '#aaa' }}>{v}</label>
+                                        <input 
+                                            type="text"
+                                            value={templateValues[v] || ''}
+                                            onChange={(e) => setTemplateValues(prev => ({ ...prev, [v]: e.target.value }))}
+                                            style={{ 
+                                                width: '100%', background: '#111', border: '1px solid #444', 
+                                                color: '#ddd', padding: '0.5rem', borderRadius: '4px',
+                                                boxSizing: 'border-box'
+                                            }}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
                 
                 <div style={{ flex: 1, minWidth: '300px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <button 
+                            className="btn-primary" 
+                            onClick={handleRun} 
+                            disabled={loading}
+                            style={{ minHeight: '40px' }}
+                        >
+                            {loading ? 'Running...' : (widget.buttonText || 'Run Action')}
+                        </button>
+                    </div>
+
                     {action.allowFile && (
                         <div style={{ background: '#1a1a1a', padding: '0.5rem', borderRadius: '4px', border: '1px solid #444' }}>
                             <label style={{ display: 'block', fontSize: '0.8rem', color: '#888', marginBottom: '0.5rem' }}>Attachment (File)</label>
@@ -474,10 +571,10 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
                                     style={{ display: 'none' }}
                                     onChange={handleFileSelect}
                                 />
-                                <button className="btn-secondary" onClick={() => fileInputRef.current.click()}>
+                                <button className="btn-secondary" style={{ padding: '0.25rem 0.5rem' }} onClick={() => fileInputRef.current.click()}>
                                     Local File
                                 </button>
-                                <button className="btn-secondary" onClick={() => setShowBucketModal(true)}>
+                                <button className="btn-secondary" style={{ padding: '0.25rem 0.5rem' }} onClick={() => setShowBucketModal(true)}>
                                     From External Bucket
                                 </button>
                                 {selectedFile && (
@@ -493,33 +590,31 @@ function ActionButtonWidget({ widget, appKey, getActionInfo }) {
                         </div>
                     )}
 
-                    {widget.input && (
+
+
+                    {widget.input && !action.hideJson && (
                         <div>
                             <label style={{ display: 'block', fontSize: '0.8rem', color: '#888', marginBottom: '0.5rem' }}>Payload (JSON)</label>
                             <textarea 
                                 value={input}
-                                onChange={(e) => setInput(e.target.value)}
+                                onChange={(e) => !action.lockJson && setInput(e.target.value)}
+                                readOnly={action.lockJson}
                                 placeholder={`Enter payload... ${action.allowFile ? 'Use {{filePath}} for the file location.' : ''}`}
                                 style={{ 
                                     width: '100%', background: '#111', border: '1px solid #444', 
-                                    color: '#ddd', padding: '0.5rem', borderRadius: '4px', minHeight: '80px',
-                                    fontFamily: 'monospace', fontSize: '0.85rem'
+                                    color: '#ddd', padding: '0.5rem', borderRadius: '4px', minHeight: '200px',
+                                    fontFamily: 'monospace', fontSize: '0.85rem',
+                                    opacity: action.lockJson ? 0.7 : 1,
+                                    cursor: action.lockJson ? 'not-allowed' : 'text',
+                                    boxSizing: 'border-box',
+                                    resize: 'vertical'
                                 }}
                             />
                         </div>
                     )}
                 </div>
 
-                <div>
-                    <button 
-                        className="btn-primary" 
-                        onClick={handleRun} 
-                        disabled={loading}
-                        style={{ height: '100%', minHeight: '40px' }}
-                    >
-                        {loading ? 'Running...' : (widget.buttonText || 'Run Action')}
-                    </button>
-                </div>
+
             </div>
 
             {/* BUCKET SELECTION MODAL */}
