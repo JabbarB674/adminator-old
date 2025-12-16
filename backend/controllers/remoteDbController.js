@@ -284,7 +284,6 @@ exports.runAction = async (req, res) => {
                     delete requestHeaders['host'];
                     delete requestHeaders['Host'];
 
-                    console.log('[RemoteDB] Final Headers:', JSON.stringify(requestHeaders, null, 2));
 
                 } catch (signErr) {
                     console.error(`[RemoteDB] AWS Signing failed: ${signErr.message}`);
