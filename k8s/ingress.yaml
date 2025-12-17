@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: adminator-ingress
+  namespace: adminator
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+spec:
+  ingressClassName: traefik-gateway
+  tls:
+    - hosts:
+        - adminator.tastytrucks.com.au
+  rules:
+    - host: adminator.tastytrucks.com.au
+      http:
+        paths:
+          # Route /api requests to the Backend
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: adminator-dev-backend
+                port:
+                  number: 80
+          # Route everything else to the Frontend
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: adminator-dev-frontend
+                port:
+                  number: 80

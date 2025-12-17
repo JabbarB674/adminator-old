@@ -2,45 +2,43 @@ apiVersion: v1
 kind: Service
 metadata:
   name: adminator-dev-frontend
-  namespace: default
+  namespace: adminator
   labels:
     app: adminator-dev
 spec:
   selector:
     app: adminator-dev
-  type: NodePort
+  type: ClusterIP
   ports:
     - name: http-frontend
       protocol: TCP
       port: 80            # Cluster port
       targetPort: 3000    # React dev server
-      nodePort: 30200     # EXTERNAL: http://192.168.100.51:30200/
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: adminator-dev-backend
-  namespace: default
+  namespace: adminator
   labels:
     app: adminator-dev
 spec:
   selector:
     app: adminator-dev
-  type: NodePort
+  type: ClusterIP
   ports:
     - name: http-backend
       protocol: TCP
       port: 80            # Cluster port
       targetPort: 5000    # Express server
-      nodePort: 30201     # EXTERNAL: http://192.168.100.51:30201/
 
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: adminator-dev
-  namespace: default
+  namespace: adminator
   labels:
     app: adminator-dev
 spec:
@@ -53,6 +51,7 @@ spec:
       labels:
         app: adminator-dev
     spec:
+      serviceAccountName: adminator-sa
       # Pin to infra node
       nodeSelector:
         nodepool: infra
@@ -92,7 +91,7 @@ spec:
 
               echo "[init] Cloning repository using deploy key"
               # Replace with your actual repo URL
-              git clone --single-branch -- git@github.com:jabbarb/adminator.git /repo \
+              git clone --single-branch -- git@github.com:JabbarB-Tastyfresh/adminator.git /repo \
                 || { echo "[init] ❌ Clone failed (check deploy key access)"; exit 1; }
 
               echo "[init] ✅ Clone complete"
@@ -100,9 +99,10 @@ spec:
               # 🔧 Patch Frontend .env
               if [ -d /repo/frontend ]; then
                 echo "[init] 🔧 Writing .env for frontend"
-                # Point to the NodePort of the backend (External Access)
-                echo "REACT_APP_API_URL=http://192.168.100.51:30201" > /repo/frontend/.env
-                echo "[init]   -> wrote /repo/frontend/.env"
+                # Point to the Ingress URL (External Access)
+                # Overwrite .env.development because it takes precedence in 'npm start'
+                echo "REACT_APP_API_URL=https://adminator.tastytrucks.com.au/api" > /repo/frontend/.env.development
+                echo "[init]   -> wrote /repo/frontend/.env.development"
               fi
 
               # 🔧 Patch Backend .env
@@ -112,20 +112,19 @@ spec:
               PORT=5000
               NODE_ENV=development
               
-              # Database (Internal K8s DNS)
-              DATABASE_URL=postgres://admin:password@postgres.default.svc.cluster.local:5432/adminator_system
+              # Vault Connection
+              VAULT_ADDR=http://vault.vault.svc.cluster.local:8200
+              VAULT_ROLE=adminator
               
-              # MinIO (Internal K8s DNS)
-              S3_ENDPOINT=http://minio.default.svc.cluster.local:9000
+              # Database (Core Info - Secrets loaded from Vault)
+              DB_SERVER=postgres.database.svc.cluster.local
+              DB_USER=admin
+              DB_NAME=adminator
+              
+              # MinIO (Core Info - Secrets loaded from Vault)
+              S3_ENDPOINT=http://minio-api.minio.svc.cluster.local:9000
               S3_BUCKET_NAME=adminator-storage
               S3_REGION=us-east-1
-              S3_ACCESS_KEY=minioadmin
-              S3_SECRET_KEY=minioadmin
-              
-              # Vault (Internal K8s DNS)
-              VAULT_ADDR=http://vault.default.svc.cluster.local:8200
-              VAULT_ROLE=adminator
-              # No token needed - uses K8s Service Account
               EOF
                 echo "[init]   -> wrote /repo/backend/.env"
               fi
